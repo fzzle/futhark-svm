@@ -8,8 +8,8 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([n]f32) =
   let tau = 1e-12
 
   -- Q[i, j] = y[i] * y[j] * K[i, j]
-  let Q = map2 (\ x y -> map2 (\ x' y' -> f32.i8 (y * y') * dot x x')) xs ys) xs ys
-
+  let Q = map2 (\ x y -> map2 (\ x' y' -> f32.i8 (y * y') * dot x x') xs ys) xs ys
+  
   let A = replicate n 0f32
   let G = replicate n (-1f32)
 
@@ -70,7 +70,7 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([n]f32) =
     -- update gradient
     let dA_i = A_i - A[i]
     let dA_j = A_j - A[j]
-    let G' = map2 (\ q_i q_j g -> g + q_i * dA_i + q_j * dA_j) Q[i] Q[j] G
+    let G' = map3 (\ q_i q_j g -> g + q_i * dA_i + q_j * dA_j) Q[i] Q[j] G
     let A' = scatter A [i, j] [A_i, A_j]
 
     in (true, G', A')
