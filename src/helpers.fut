@@ -4,6 +4,9 @@ type parameters = {
   kernel: u8
 }
 
+let eps: f32 = 1e-3
+let tau: f32 = 1e-12
+
 let dot [n] (as: [n]f32) (bs: [n]f32): f32 =
   f32.sum (map2 (*) as bs)
 
