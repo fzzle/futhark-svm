@@ -1,11 +1,7 @@
 import "helpers"
 
--- Implementation of ...
-entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([n]f32) =
+entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
   let C = 10
-
-  let eps = 1e-3
-  let tau = 1e-12
 
   -- Q[i, j] = y[i] * y[j] * K[i, j]
   let Q = map2 (\ x y -> map2 (\ x' y' -> f32.i8 (y * y') * dot x x') xs ys) xs ys
@@ -51,8 +47,6 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([n]f32) =
 
     let y_jf = f32.i8 ys[j]
 
-    -- Find Q[_][i] og Q[_][j]
-
     -- working set: (i, j)
     let a = Q[i, i] + Q[j, j] - 2 * y_if * y_jf * Q[i, j]
     let a = if a <= 0 then tau else a
@@ -75,7 +69,7 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([n]f32) =
 
     in (true, G', A')
 
-  -- Number of support vectors
+  -- # support vectors
   --let n_sv = reduce (\ c a -> c + i32.bool (f32.abs a > 0)) 0 A
 
   -- Todo: Find rho
