@@ -21,14 +21,19 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
     let (i, Gx) = reduce (\ (i, Gx) (t, Gx') -> if !(f32.isnan Gx') && Gx' >= Gx
       then (t, Gx') else (i, Gx)) (-1, -f32.inf) (zip iots Gxs)
 
+    -- Flatten: Replace A with As and ys with yss 
     let cs = map2 (\ a y -> (y == 1 && a > 0) || (y == -1 && a < C)) A ys
+    -- Flatten: Insert Gs yss css
     let Gns = map3 (\ g y c -> if c then f32.i8 (-y) * g else f32.nan) G ys cs
+    -- Flatten by segmented reduce w/ flags
     let Gn = reduce (\ Gn Gn' -> if !(f32.isnan Gn') && Gn' <= Gn then Gn' else Gn) f32.inf Gns
     
     let y_if = f32.i8 ys[i]
     let q_i = Q[i]
     let d_i = D[i]
+    -- Flatten by map
     let bs = map2 (\ g y -> Gx + (f32.i8 y) * g) G ys
+    
     let as = map3 (\ q d y -> 
       let a = d_i + d - 2f32 * y_if * (f32.i8 y) * q
       in f32.max a tau) q_i D ys
