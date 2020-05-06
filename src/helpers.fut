@@ -12,3 +12,4 @@ let dot [n] (as: [n]f32) (bs: [n]f32): f32 =
 
 let clamp (a: f32) (n: f32) (x: f32): f32 =
   f32.min x (f32.max n a)
+
