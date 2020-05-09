@@ -2,9 +2,8 @@ import "helpers"
 import "flatten"
 
 entry solve [n_samples][m][o] (xs: [n_samples][m]f32) (ys: [n_samples]i8)
-    (c_fs: [o]bool) (starts: [o]i32) (flags: [o]bool) (aligned_ys: [o]i8): [o]f32 =
+    (c_fs: [o]bool) (starts: [o]i32) (fs: [o]bool) (aligned_ys: [o]i8): [o]f32 =
   let C = 10
-  let fs = flags
   -- Todo: starts, an array of flag values that indicate
   -- the start index of a class group in `ys`.
   -- Todo: algined_ys, an array of 0 and 1's that indicate
@@ -28,7 +27,7 @@ entry solve [n_samples][m][o] (xs: [n_samples][m]f32) (ys: [n_samples]i8)
   -- contained in `ys`, `xs`, and the cache `Q`, `D`.
 
   let segmented_indices = map2 (+) starts (segmented_iota c_fs)
-  let end_flags = rotate 1 flags
+  let end_flags = rotate 1 fs
   let reversed_end_flags = reverse end_flags
   let y_flags = map (==1) aligned_ys
 
@@ -58,9 +57,9 @@ entry solve [n_samples][m][o] (xs: [n_samples][m]f32) (ys: [n_samples]i8)
     let s_is     = i32_extract_endings n_segments fs is'
     let s_A_is   = f32_extract_endings n_segments fs as'
 
-    let s_G_mins = (segmented_reduce (\ x0 x1 ->
+    let s_G_mins = segmented_reduce (\ x0 x1 ->
       if f32.isnan x0 || !(f32.isnan x1) && x1 <= x0 then x1 else x0)
-      f32.inf flags Gns) 
+      f32.inf fs Gns
       :> [n_segments]f32
 
     let bs = map3 (\ g y gx -> gx + (f32.i8 y) * g) G aligned_ys d_G_maxs    
