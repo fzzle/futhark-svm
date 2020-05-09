@@ -1,9 +1,10 @@
 import "helpers"
 import "flatten"
 
-entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
+entry solve [n_samples][m][o] (xs: [n_samples][m]f32) (ys: [n_samples]i8)
+    (c_fs: [o]bool) (starts: [o]i32) (flags: [o]bool) (aligned_ys: [o]i8): [o]f32 =
   let C = 10
-  
+  let fs = flags
   -- Todo: starts, an array of flag values that indicate
   -- the start index of a class group in `ys`.
   -- Todo: algined_ys, an array of 0 and 1's that indicate
@@ -20,78 +21,103 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
   let Q = map2 (\ x y -> map2 (\ x' y' -> f32.i8 (y * y') * dot x x') xs ys) xs ys
   let D = map (\ x -> f32.sum (map (\ x_i -> x_i * x_i) x)) xs
 
-  let size = n * (n - 1) / 2
-  let A = replicate size 0f32
-  let G = replicate size (-1f32)
+  let A = replicate o 0f32
+  let G = replicate o (-1f32)
   --let indices = iota n
   -- Segmented indices that still point to the samples
   -- contained in `ys`, `xs`, and the cache `Q`, `D`.
-  let segmented_indices = map2 (+) starts (segmented_iota fs)
+
+  let segmented_indices = map2 (+) starts (segmented_iota c_fs)
+  let end_flags = rotate 1 flags
+  let reversed_end_flags = reverse end_flags
+  let y_flags = map (==1) aligned_ys
+
+  let scan_flags = scan (+) 0 (map i32.bool fs)
+  let n_segments = last scan_flags
+  let n_segments_x2 = n_segments * 2
 
   let (_, _, A) = loop (c, G, A) = (true, G, A) while c do
-    -- working set selection 3
-    let mxss = map3 (\ a g y -> if (y == 1 && a < C) ||
-      (y == -1 && a > 0) then f32.i8 (-y) * g else f32.nan) A G aligned_ys
+    let bcs0 = map2 (\y a -> (y && a < C) || (!y && a > 0)) y_flags A
+    let bcs1 = map2 (\y a -> (y && a > 0) || (!y && a < C)) y_flags A
+    let tmp0 = map2 (\y g -> f32.i8 (-y) * g) aligned_ys G
+    let Gxs = map2 (\b t -> if b then t else f32.nan) bcs0 tmp0
+    let Gns = map2 (\b t -> if b then t else f32.nan) bcs1 tmp0
 
-    -- segmented_reduce_distribute
-    let (is, mxs) = unzip (segmented_scan (\ (i, x0) (t, x1) ->
-      if !(f32.isnan x1) && x1 >= x0 then (t, x1) else (i, x0))
-      (-1, -f32.inf) fs (zip segmented_indices Gxss))
-    let is = distribute_ends fs is
-    let mxs = distribute_ends fs mxs
-
-
-    let (is, Gxs) = unzip (segmented_reduce (\ (i, Gx) (t, Gx') ->
-      if !(f32.isnan Gx') && Gx' >= Gx then (t, Gx') else (i, Gx))
-      (-1, -f32.inf) fs (zip segmented_indices Gxss))
-
-    -- Flatten: Replace A with As and ys with yss 
-    let cs = map2 (\ a y -> (y == 1 && a > 0) || (y == -1 && a < C)) A aligned_ys
-    -- Flatten: Insert Gs yss css
-    -- Would be kind of bad, but (f32.i8 (-y) * g) / f32.bool c should return the same
-    let Gnss = map3 (\ g y c -> if c then f32.i8 (-y) * g else f32.nan) G aligned_ys cs
-    -- Flatten by segmented reduce w/ flags
-    let Gns = segmented_reduce (\ Gn Gn' ->
-      if !(f32.isnan Gn') && Gn' <= Gn then Gn' else Gn)
-      f32.inf fs Gnss
+    -- Find G_maxs + their is, as (potentially ys)
+    let tmp = segmented_scan (\(x0, t0, a0) (x1, t1, a1) ->
+      let next = f32.isnan x0 || (!(f32.isnan x1) && x1 >= x0)
+      in if next then (x1, t1, a1) else (x0, t0, a0))
+      (-f32.inf, -1, 0) fs (zip3 Gxs segmented_indices A)
     
-    let y_if = f32.i8 ys[i]
-    let q_i = Q[i]
-    let d_i = D[i]
-
-    -- Flatten by map
-    let distributed_gxs = distribute fs Gxs 
-    let bs = map3 (\ g y gx -> gx + (f32.i8 y) * g) G aligned_ys distributed_gxs
+    let (G_maxs', is', as') = unzip3 tmp
     
-    let as = map3 (\ q d y -> 
-      let a = d_i + d - 2f32 * y_if * (f32.i8 y) * q
-      in f32.max a tau) q_i D ys
-    let Ons = map3 (\ c b a -> if c && b > 0 then -(b * b) / a else f32.nan) cs bs as
-    let (j, _) = reduce (\ (j, On) (t, On') -> if !(f32.isnan On') && On' <= On
-      then (t, On') else (j, On)) (-1, f32.inf) (zip iots Ons)
+    let d_G_maxs = f32_distribute_endings fs G_maxs'
+    let d_is     = i32_distribute_endings fs is'
 
-    in if j == -1 || Gx - Gn < eps then (false, G, A) else
+    let s_G_maxs = f32_extract_endings n_segments fs G_maxs'
+    let s_is     = i32_extract_endings n_segments fs is'
+    let s_A_is   = f32_extract_endings n_segments fs as'
 
-    let y_jf = f32.i8 ys[j]
+    let s_G_mins = (segmented_reduce (\ x0 x1 ->
+      if f32.isnan x0 || !(f32.isnan x1) && x1 <= x0 then x1 else x0)
+      f32.inf flags Gns) 
+      :> [n_segments]f32
 
-    -- working set: (i, j)
-    let a = as[j]
-    let b = bs[j]
+    let bs = map3 (\ g y gx -> gx + (f32.i8 y) * g) G aligned_ys d_G_maxs    
+    let as = map2 (\ i t -> 
+      -- if i == -1 then 0, just to make -(b * b) / a = nan, and thus ignored in the reduce
+      let a = D[i] + D[t] - 2f32 * f32.i8 (ys[i] * ys[t]) * Q[i, t]
+      in f32.max a tau) d_is segmented_indices
+    let Ons = map3 (\ c b a -> if c && b > 0 then -(b * b) / a else f32.nan) bcs1 bs as
 
-    -- update alphas
-    let A_i = A[i] + y_if * b / a
-    -- let A_j = A[j] - f32.i8 ys[j] * b / a
-    let sum = y_if * A[i] + y_jf * A[j]
-    let A_i = clamp A_i 0 C
-    let A_j = y_jf * (sum - y_if * A_i)
-    let A_j = clamp A_j 0 C
-    let A_i = y_if * (sum - y_jf * A_j)
+    let (_, s_js, s_A_js) = unzip3 (segmented_reduce (\ (x0, t0, a0) (x1, t1, a1) ->
+      let next = f32.isnan x0 || (!(f32.isnan x1) && x1 <= x0)
+      in if next then (x1, t1, a1) else (x0, t0, a0))
+      (f32.inf, -1, 0) fs (zip3 Ons segmented_indices A))
 
-    -- update gradient
-    let dA_i = A_i - A[i]
-    let dA_j = A_j - A[j]
-    let G' = map3 (\ q_i q_j g -> g + q_i * dA_i + q_j * dA_j) Q[i] Q[j] G
-    let A' = scatter A [i, j] [A_i, A_j]
+    let s_js = s_js :> [n_segments]i32
+    let s_A_js = s_A_js :> [n_segments]f32
+
+    let stops = map3 (\ j Gx Gn -> j == -1 || (Gx - Gn < eps)) s_js s_G_maxs s_G_mins
+    in if all id stops then (false, G, A) else
+
+    let newAs = map5 (\ i j a_i a_j s ->
+      if s then (0, 0, 0, 0) else
+        let y_if = f32.i8 ys[i]
+        let y_jf = f32.i8 ys[j]
+
+        let a = D[i] + D[j] - 2 * y_if * y_jf * Q[i, j]
+        let a = f32.max a tau
+        let b = (-y_if) * G[i] + y_jf * G[j] --forkert
+
+        let curr_A_i = a_i
+        let curr_A_j = a_j
+
+        -- need distributed indices for As
+        -- update alphas
+        let A_i = curr_A_i + y_if * b / a
+        let sum = y_if * curr_A_i + y_jf * curr_A_j
+        let A_i = clamp A_i 0 C
+        let A_j = y_jf * (sum - y_if * A_i)
+        let A_j = clamp A_j 0 C
+        let A_i = y_if * (sum - y_jf * A_j)
+        in (A_i, A_j, A_i - curr_A_i, A_j - curr_A_j)
+      ) s_is s_js s_A_is s_A_js stops
+
+    let (A_is, A_js, delta_A_is, delta_A_js) = unzip4 newAs
+    
+    let d_dA_is = distribute fs delta_A_is
+    let d_dA_js = distribute fs delta_A_js
+    let d_js = i32_distribute fs s_js
+
+    let G' = map5 (\ g i j t (dA_i, dA_j) -> g + Q[i, t] * dA_i + Q[j, t] * dA_j)
+      G d_is d_js segmented_indices (zip d_dA_is d_dA_js) 
+
+    -- forkert (is og js er globale indeks)
+    -- let wb_is =  ++ s_js :> [n_segments_x2]i32
+    -- let wb_As =  ++ A_js :> [n_segments_x2]f32
+    let A' = scatter (copy A) s_is A_is
+    let A' = scatter A' s_js A_js
 
     in (true, G', A')
 
