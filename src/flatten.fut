@@ -49,12 +49,12 @@ let segmented_reduce 't [n] (op: t -> t -> t) (ne: t)
 let f32_distribute_endings [n] (fs: [n]bool) (vs: [n]f32): [n]f32 =
   let ends = rotate 1 fs
   let masked = map2 (\f v -> f32.bool f * v) ends vs
-  in (segmented_scan (+) 0 fs[::-1] masked[::-1])[::-1]
+  in (segmented_scan (+) 0 ends[::-1] masked[::-1])[::-1]
 
 let i32_distribute_endings [n] (fs: [n]bool) (vs: [n]i32): [n]i32 =
   let ends = rotate 1 fs
   let masked = map2 (\f v -> i32.bool f * v) ends vs
-  in (segmented_scan (+) 0 fs[::-1] masked[::-1])[::-1]
+  in (segmented_scan (+) 0 ends[::-1] masked[::-1])[::-1]
 
 let i32_extract_endings [n] (n_segments: i32) (fs: [n]bool) (vs: [n]i32) =
   let ends = rotate 1 fs
