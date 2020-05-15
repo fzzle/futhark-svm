@@ -1,1 +1,0 @@
-[[-1, -1], [-2, -1], [1, 1], [2, 1]] [1, 1, -1, -1] [true, false, true, false] [0, 0, 2, 2] [true, false, false, false] [1, 1, -1, -1]

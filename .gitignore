@@ -1,5 +1,8 @@
-*.data
+data/
+bin/
+lib/*/*
+!lib/*/fzzle/
+
+
 .vscode
 __pycache__
-src/*
-!src/*.fut
