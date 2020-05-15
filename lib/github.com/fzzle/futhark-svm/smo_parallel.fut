@@ -1,6 +1,6 @@
 import "helpers"
 
-entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
+entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, i32) =
   let C = 10
 
   -- Q[i, j] = y[i] * y[j] * K[i, j]
@@ -38,7 +38,7 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
 
     let c0 = Gx - Gn < eps
     let c1 = j == -1
-    in if c0 || c1 then (false, G, A) else
+    in if c1 || c0 then (false, G, A) else
 
     let y_jf = f32.i8 ys[j]
 
@@ -64,7 +64,12 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
     in (true, G', A')
 
   -- # support vectors
-  --let n_sv = reduce (\ c a -> c + i32.bool (f32.abs a > 0)) 0 A
+  let is_sv = map (\a -> i32.bool (a != 0)) A
+  let n_sv = i32.sum is_sv
+
+  let A = map2 (\a y -> a * f32.i8 y) A ys
+
+  let coefs = filter (\a -> a != 0) A
 
   -- Todo: Find rho
-  in A
+  in (coefs, n_sv)
