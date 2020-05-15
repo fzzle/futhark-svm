@@ -1,12 +1,36 @@
 import "helpers"
 
-entry solve [n_samples][n_features][n_as]
-    (xs: [n_samples][n_features]f32) (ys: [n_samples]i8)
-    (fs: [n_as]bool) (starts: [n_as]i32) (c_fs: [n_as]bool)
-    (aligned_ys: [n_as]i8): ([n_as]f32, i32) =
-  let C = 10
+--     ys (input data):
+--     +---+---------+-----+
+--   c | 1 |    2    |  3  |
+--     +-+-+-+-+-+-+-+-+-+-+
+--  ys |1|1|2|2|2|2|2|3|3|3|
+--     +-+-+-+-+-+-+-+-+-+-+
 
+--     Class pair ys (for flattened solve):
+--     +---+---------+-----+-----+---------+-----+
+--   c | 1 |    2    |  1  |  3  |    2    |  3  |
+--     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+--  ys |0|0|1|1|1|1|1|0|0|0|1|1|1|0|0|0|0|0|1|1|1|
+--     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+--  fs |1|0|0|0|0|0|0|1|0|0|0|0|0|1|0|0|0|0|0|0|0|
+--     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
+
+-- Differences from smo_parallel:
+-- 1. Can't use Q-matrix since non-flattened ys aren't -1 / +1.
+--    Instead I use a K-matrix (kernel) and multiply by the y's
+--    when needed later. However, this makes it unecessary to
+--    multiply by y's when computing new A's (it's only needed
+--    when computing new G's).
+
+entry solve [n_samples][n_features][n_as]
+    (xs: [n_samples][n_features]f32)
+    (fs: [n_as]bool) (starts: [n_as]i32) (cfs: [n_as]bool)
+    (aligned_ys: [n_as]i8): ([n_as]f32, i32) =
+  -- Parameters
+  let C = 10
   let max_iterations = 1000
+
   --  i32.max 10000000 <|
   --    if n_samples > i32.highest / 100
   --    then i32.highest
@@ -15,11 +39,11 @@ entry solve [n_samples][n_features][n_as]
   -- Example:
   -- ys:         [0, 0, 0, 1, 1, 1]
   -- starts:     [0, 0, 0, 3, 3, 3]
-  -- algined_ys: [0, 0, 0, 1, 1, 1]
+  -- aligned_ys: [0, 0, 0, 1, 1, 1]
   -- fs:         [1, 0, 0, 0, 0, 0]
 
   -- Q[i, j] = y[i] * y[j] * K[i, j]
-  let Q = map2 (\ x y -> map2 (\ x' y' -> f32.i8 (y * y') * dot x x') xs ys) xs ys
+  let K = map2 (\ x -> map2 (\ x' -> dot x x') xs) xs
   let D = map (\ x -> f32.sum (map (\ x_i -> x_i * x_i) x)) xs
 
   let A = replicate n_as 0f32
@@ -27,14 +51,14 @@ entry solve [n_samples][n_features][n_as]
   let stops = replicate n_as false
 
   let segmented_indices = map2 (+) starts (segmented_iota c_fs)
-  let y_flags = map (==1) aligned_ys
+  let fys = map (==1) aligned_ys
 
   let scan_flags = scan (+) 0 (map i32.bool fs)
   let n_segments = last scan_flags
   
   let (_, i, _, A, _) = loop (b, i, G, A, s) = (true, 0, G, A, stops) while b do
-    let bcs0 = map3 (\s y a -> !s && ((y && a < C) || (!y && a > 0))) s y_flags A
-    let bcs1 = map3 (\s y a -> !s && ((y && a > 0) || (!y && a < C))) s y_flags A
+    let bcs0 = map3 (\s y a -> !s && ((y && a < C) || (!y && a > 0))) s fys A
+    let bcs1 = map3 (\s y a -> !s && ((y && a > 0) || (!y && a < C))) s fys A
     let tmp0 = map2 (\y g -> f32.i8 (-y) * g) aligned_ys G
     --let Gxs = map2 (\b t -> if b then t else f32.nan) bcs0 tmp0
     --let Gns = map2 (\b t -> if b then t else f32.nan) bcs1 tmp0
@@ -45,13 +69,13 @@ entry solve [n_samples][n_features][n_as]
     
     let (G_maxs', _, is', iss', as') = unzip5 tmp
 
-    let d_G_maxs = f32_distribute_endings fs G_maxs'
-    let d_is     = i32_distribute_endings fs is'
-
     let s_G_maxs = f32_extract_endings n_segments fs G_maxs'
     let s_is     = i32_extract_endings n_segments fs is'
     let s_A_is   = f32_extract_endings n_segments fs as'
     let s_iss    = i32_extract_endings n_segments fs iss'
+
+    let d_G_maxs = f32_distribute_endings fs s_G_maxs'
+    let d_is     = i32_distribute_endings fs s_is'
 
     let (G_mins', _) = unzip <| segmented_scan (\ a b ->
       if !a.1 || (b.1 && b.0 <= a.0) then b else a)
@@ -64,10 +88,10 @@ entry solve [n_samples][n_features][n_as]
     let bcs2 = map2 (\ b c -> b > 0 && c) bs bcs0
 
     let Ons = map3 (\ b i t ->
-      let a = D[i] + D[t] - f32.i8 (2 * ys[i] * ys[t]) * Q[i, t]
+      let a = D[i] + D[t] - 2 * K[i, t]
       let a = f32.max a tau
       in -(b * b) / a)
-      bs d_is segmented_indices
+      bs d_is s_iss segmented_indices
 
     let (_, _, s_js, s_jss, s_A_js) = unzip5 (segmented_reduce (\ a b ->
       if !a.1 || (b.1 && b.0 <= a.0) then b else a)
@@ -86,7 +110,7 @@ entry solve [n_samples][n_features][n_as]
         let y_if = f32.i8 aligned_ys[is]
         let y_jf = f32.i8 aligned_ys[js]
 
-        let a = D[i] + D[j] - 2f32 * y_if * y_jf * Q[i, j]
+        let a = D[i] + D[j] - 2f32 * K[i, j]
         let a = f32.max a tau
         let b = (-y_if) * G[is] + y_jf * G[js]
 
@@ -102,8 +126,8 @@ entry solve [n_samples][n_features][n_as]
 
     let (A_is, A_js, delta_A_is, delta_A_js) = unzip4 newAs
     
-    let d_dA_is = distribute fs delta_A_is
-    let d_dA_js = distribute fs delta_A_js
+    let d_dA_is = f32_distribute fs delta_A_is
+    let d_dA_js = f32_distribute fs delta_A_js
     let d_js = i32_distribute fs s_js
 
     let G' = map5 (\ g i j t (dA_i, dA_j) -> g + Q[i, t] * dA_i + Q[j, t] * dA_j)
