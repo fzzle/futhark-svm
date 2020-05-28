@@ -2,62 +2,66 @@ import "helpers"
 
 entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, i32, i32) =
   let C = 10
+  --let gamma = 0
+  --let degree = 3
   let max_iterations = 100000
 
+  let I = iota n
   -- Q[i, j] = y[i] * y[j] * K[i, j]
   let K = map (\x -> map (\x' -> dot x x') xs) xs
-  let D = map (\i -> K[i, i]) (iota n)
+  --let K = map (\x0 -> map (\x1 -> ((reduce (+) 0 (map2 (*) x0 x1)) + gamma) ** degree) xs) xs
+  let D = map (\i -> K[i, i]) I
 
   let A = replicate n 0f32
-  let ysf32 = map f32.i8 ys
-  let G = map (\y -> -y) ysf32
-  let ysbool = map (\y -> y > 0) ys
-  let iots = iota n
-
-  let (_, k, G, A) = loop (c, k, G, A) = (true, 0, G, A) while c do
-
-    let f_upper_is = map4 (\y a g i -> if (y && a < C) || (!y && a > 0) then (g, i) else (f32.inf, -1)) ysbool A G iots
-    let f_lower = map3 (\y a g -> if (y && a > 0) || (!y && a < C) then g else -f32.inf) ysbool A G
-    let (f_u, u) = reduce_comm (\a b -> if a.0 < b.0 then a else b) (f32.inf, -1) f_upper_is
-    let f_max = f32.maximum f_lower
+  let F = map (\y -> f32.i8 (-y)) ys
+  let P = map (\y -> y > 0) ys
+  
+  let (_, k, F, A) = loop (c, k, F, A) = (true, 0, F, A) while c do
     
-    in if f_u >= f_max || k > max_iterations then (false, k, G, A) else
+    -- Find the extreme example x_u, which has the minimum
+    -- optimality indicator, f_u.
+    let F_u_B = map2 (\y a -> (y && a < C) || (!y && a > 0)) P A
+    let F_u_I = map3 (\b f i -> if b then (f, i) else (f32.inf, -1)) F_u_B F I
+    let (f_u, u) = reduce_comm (\a b -> if a.0 < b.0 then a else b) (f32.inf, -1) F_u_I
 
-    let tmp_is = map4 (\f_i d_i K_u_i i ->
-      let d = f_u - f_i
-      in if d < 0 then -- also checks if f_i is X_lower, since f_i = -inf if in X_lower.
-        let eta = D[u] + d_i - 2 * K_u_i[u]
-        in ((d * d) / eta, i)
-      else (-f32.inf, -1)) 
-      f_lower D K iots
+    -- Find f_max so we can check if we're done. 
+    let F_l_B = map2 (\y a -> (y && a > 0) || (!y && a < C)) P A
+    let F_l = map2 (\b f -> if b then f else -f32.inf) F_l_B F
+    let f_max = reduce_comm (\a b -> if a > b then a else b) (-f32.inf) F_l
 
-    let (d2_eta, l) = reduce_comm
-      (\a b -> if a.0 >= b.0 then a else b)
-      (-f32.inf, -1) tmp_is
+    in if f_max - f_u < eps then (false, k, F, A) else
 
-    -- working set: (i, j)
-    -- update alphas
-
-    let f_l = G[l]
+    -- Find the extreme example x_l.
+    let V_l_I = map4 (\f d k_u i ->
+      let b = f_u - f
+      -- f_u < f and f in X_l.
+      -- b > 0 if f not in X_l (since f = -inf). 
+      in if b < 0
+         then ((b * b) / (D[u] + d - 2 * k_u), i)
+         else (-f32.inf, -1)) F_l D K[u] I
+    let (v_l, l) = reduce_comm (\a b -> if a.0 > b.0 then a else b) (-f32.inf, -1) V_l_I
     
-    let d_a_u = if ysbool[u] then C - A[u] else A[u]
-    let d_a_l = f32.min (if ysbool[l] then A[l] else C - A[n]) (d2_eta / (f_u - f_l))
-    let delta = f32.min d_a_u d_a_l 
-      --f32.minimum [
-      --  (if ysbool[u] then C - A[u] else A[u])
-      --  (if ysbool[l] then A[l] else C - A[l])
-      --  (d2_eta / (f_u - f_l))
-      --]
+    -- Find new a_u and a_l.
+    let y_u = f32.i8 ys[u]
+    let y_l = f32.i8 ys[l]
+    let b = f_u - F[l]
+    let eta = D[u] + D[l] - 2 * K[u, l]
+
+    let a_l' = clamp (A[l] + (y_l * b) / eta) 0 C
+    --let a_l' = clamp (A[l] + y_l * (v_l / b)) 0 C 
+    let a_u' = clamp (A[u] + y_l * y_u * (A[l] - a_l')) 0 C
+
+    let diff_l = (a_l' - A[l]) * y_l
+    let diff_u = (a_u' - A[u]) * y_u
 
     -- update gradient
-    let G = map3 (\g q_u q_l -> g - delta * (q_l - q_u)) G K[u] K[l]
-    let A[u] = A[u] + delta * ysf32[u]
-    let A[l] = A[l] - delta * ysf32[l]
+    let F = map3 (\f k_u k_l -> f + diff_u * k_u + diff_l * k_l) F K[u] K[l]
+    let A[u] = a_u'
+    let A[l] = a_l'
 
-    in (true, k + 1, G, A)
+    in (k < max_iterations, k + 1, F, A)
 
-  -- # support vectors
-  let obj = (reduce (+) 0 (map2 (*) A (map (\g -> g-1) G)))/2
+  let obj = (reduce (+) 0 (map2 (*) A (map (\g -> g-1) F)))/2
 
   --let A = map2 (\a y -> a * f32.i8 y) A ys
 
