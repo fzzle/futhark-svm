@@ -16,7 +16,7 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, i32, i32) =
 
   let A = replicate n 0f32
   let F = map (\y -> f32.i8 (-y)) ys
-  let P = map (\y -> y > 0) ys
+  let P = map (>0) ys
   
   let (_, k, F, A) = loop (c, k, F, A) = (true, 0, F, A) while c do
     -- Find the extreme example x_u, which has the minimum
@@ -30,6 +30,7 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, i32, i32) =
     let F_l = map2 (\b f -> if b then f else -f32.inf) F_l_B F
     let f_max = reduce_comm (\a b -> if a > b then a else b) (-f32.inf) F_l
 
+    -- Check if done.
     in if f_max - f_u < eps then (false, k, F, A) else
 
     -- Find the extreme example x_l.
