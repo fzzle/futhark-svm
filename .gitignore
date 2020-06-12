@@ -1,7 +1,12 @@
+scripts/
+misc/
 data/
 bin/
+
 lib/*/*
 !lib/*/fzzle/
+lib/github.com/fzzle/futhark-svm/data
 
 .vscode
 __pycache__
+

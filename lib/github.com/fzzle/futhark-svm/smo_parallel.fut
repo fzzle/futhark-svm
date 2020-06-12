@@ -1,7 +1,7 @@
 import "helpers"
 
 
-entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, i32, i32) =
+entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, f32, i32, i32) =
   let C = 10
   let max_iterations = 100000
 
@@ -13,7 +13,7 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, i32, i32) =
   let G = replicate n (-1f32)
   let iots = iota n
 
-  let (_, n, G, A) = loop (c, n, G, A) = (true, 0, G, A) while c do
+  let (_, k, G, A) = loop (c, k, G, A) = (true, 0, G, A) while c do
     -- working set selection 3
 
     let Gx_is = map4
@@ -34,7 +34,7 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, i32, i32) =
       (\a b -> if b <= a then b else a)
       f32.inf Gn
     
-    in if Gx - Gn < eps || n > max_iterations then (false, n, G, A) else
+    in if Gx - Gn < eps || k > max_iterations then (false, k, G, A) else
 
     let y_if = f32.i8 ys[i]
     let On_js = map5 (\y a d q (j, g) ->
@@ -71,14 +71,22 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): ([]f32, f32, i32, i32) =
     let A[i] = A_i
     let A[j] = A_j
 
-    in (true, n + 1, G, A)
+    in (true, k + 1, G, A)
 
-  -- # support vectors
   let obj = (reduce (+) 0 (map2 (*) A (map (\g -> g-1) G)))/2
 
   --let A = map2 (\a y -> a * f32.i8 y) A ys
 
   let coefs = filter (\a -> a > eps || a < -eps) A
 
-  -- Todo: Find rho
-  in (coefs, obj, n, length coefs)
+  -- Finding rho
+  let yGs = map2 (*) (map f32.i8 ys) G
+  let free = map (\a -> a > 0 || a < C) A
+  let n_free = free |> map i32.bool |> i32.sum
+  let rho = if n_free > 0
+    then map2 (\f yG -> if f then 0 else yG) free yGs |> f32.sum |> (/(f32.i32 n_free)) 
+    else 0
+
+  -- Should return y * a, b, support vectors,
+  -- objective value, iterations
+  in (coefs, rho, obj, k, length coefs)

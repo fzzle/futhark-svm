@@ -5,11 +5,10 @@ entry solve [n][m] (xs: [n][m]f32) (ys: [n]i8): [n]f32 =
 
   -- Q[i, j] = y[i] * y[j] * K[i, j]
   let Q = map2 (\ x y -> map2 (\ x' y' -> f32.i8 (y * y') * dot x x') xs ys) xs ys
-  
+
   let A = replicate n 0f32
   let G = replicate n (-1f32)
 
-  -- let s = (A, G)
   let (_, _, A) = loop (c, G, A) = (true, G, A) while c do
     -- working set selection 3
     let (i, Gx) = loop (i, Gx) = (-1, f32.lowest) for t < n do
