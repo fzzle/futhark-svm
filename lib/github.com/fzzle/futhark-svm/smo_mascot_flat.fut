@@ -25,7 +25,7 @@ entry solve [n_samples][n_features][n_as]
 
   let SF = scan (+) 0 (map i32.bool fs)
   let n_s = last SF
-  
+
   -- Segment ends.
   let SE = rotate 1 fs
   -- Scan flags (segment index) at segment ends.
@@ -62,7 +62,7 @@ entry solve [n_samples][n_features][n_as]
       let y_u = f32.i8 ys_s[u_s]
       let y_l = f32.i8 ys_s[l_s]
       let b = f_u - F[l_s]
-      
+
       let eta = D[u] + D[l] - 2 * K[u, l]
 
       let a_l = clamp (A[l_s] + y_l * b / eta) 0 C
