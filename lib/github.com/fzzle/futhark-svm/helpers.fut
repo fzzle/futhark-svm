@@ -6,8 +6,8 @@ let tau: f32 = 1e-12
 let dot [n] (as: [n]f32) (bs: [n]f32): f32 =
   f32.sum (map2 (*) as bs)
 
-let clamp (a: f32) (low: f32) (hi: f32): f32 =
-  f32.max low (f32.min hi a)
+let clamp (l: f32) (x: f32) (u: f32): f32 =
+  f32.max l (f32.min x u)
 
 let mean [n] (xs: [n]f32): f32 =
   (f32.sum xs) / (f32.i32 n)

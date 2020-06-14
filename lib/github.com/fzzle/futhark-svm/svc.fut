@@ -1,5 +1,6 @@
 import "../../diku-dk/sorts/radix_sort"
 import "helpers"
+import "kernels"
 
 -- Perform a single optimization step.
 local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
@@ -69,12 +70,14 @@ local let find_rho [n] (A: [n]f32) (F: [n]f32)
   in if n_f > 0 then v_f else d / 2
 
 local let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
-    (Cp: f32) (Cn: f32) (kernel: f32 -> f32):
-    ([]f32, f32, f32, i32) =
-  let max_iter = 10000000
+    (kernel: u8) (Cp: f32) (Cn: f32) (gamma: f32)
+    (coef0: f32) (degree: f32): ([]f32, f32, f32, i32) =
+  let max_iter = 100000000
   -- Find kernel / kernel diagonal
-  let K = map (\x0 -> map (\x1 -> kernel (dot x0 x1)) X) X
-  let D = map (\i -> K[i, i]) (iota n)
+  let (K, D) = match kernel
+    case 0 -> linear X
+    case 1 -> rbf X gamma
+    case _ -> polynomial X gamma coef0 degree
 
   let A = replicate n 0
   let F = map (\y -> f32.i8 (-y)) Y
@@ -88,7 +91,6 @@ local let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
   let rho = find_rho A F P Cp Cn d
   let A = map2 (*) A (map f32.i8 Y)
   let A = filter (\a -> f32.abs a > eps) A
-
   in (A, obj, rho, i)
 
 local let bincount [n] (k: i32) (is: [n]i32): [k]i32 =
@@ -102,6 +104,7 @@ entry train [n][m] (X: [n][m]f32) (Y: [n]u8)
     (degree: f32) =
   let sorter = radix_sort_by_key (.1) u8.num_bits u8.get_bit
   let (X, Y) = unzip (sorter (zip X Y))
+  -- TODO: sort indices?
   let l = 1 + i32.u8 (u8.maximum Y)
   let counts = bincount l (map i32.u8 Y)
   let starts = scan (+) 0 (rotate (-1) counts) |> map (+(-last counts))
@@ -117,10 +120,7 @@ entry train [n][m] (X: [n][m]f32) (Y: [n]u8)
       let X_j = X[starts[j]:starts[j] + counts[j]]
       let X_k = X_i ++ X_j :> [size][m]f32
       let Y_k = map (\x -> if x < counts[i] then 1 else -1) (iota size)
-      let solver = solve X_k Y_k C C
-      let (A_k, obj, rho, i) = match kernel
-        case 1 -> solver (\x -> (gamma * x + coef0) ** degree)
-        case _ -> solver id
+      let (A_k, obj, rho, i) = solve X_k Y_k kernel C C gamma coef0 degree
       in (A ++ A_k,
           objs with [k] = obj,
           rhos with [k] = rho,
