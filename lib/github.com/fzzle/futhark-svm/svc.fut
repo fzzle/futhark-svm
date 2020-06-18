@@ -118,7 +118,7 @@ entry train [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
       let X_p = concat_to size X_i X_j
       let Y_p = map (\x -> if x < ci then 1 else -1) (iota size)
       let (A_p, obj, rho, i) = solve X_p Y_p k C C gamma coef0 degree eps max_iter
-      let (A_p, S_p) = unzip (filter (\x -> f32.abs x.0 > eps) (zip A_p X_p))
+      let (A_p, S_p) = unzip (filter (\x -> f32.abs x.0 > 0) (zip A_p X_p))
       let flgs = map (==0) (iota (length A_p))
       in (A ++ A_p,
           S ++ S_p,
@@ -133,18 +133,17 @@ entry train [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
   --let S = loop S = S for i < n_sv do S with [i] = X[S_is[i]]
   in (A, S, fs, rhos, objs, iter, t)
 
-entry predict [n][m][o][v][s] (X: [n][m]f32) (S: [o][m]f32)
+entry predict [n][m][v][s] (X: [n][m]f32) (S: [v][m]f32)
     (A: [v]f32) (rhos: [s]f32) (flags: [v]bool) (t: i32)
     (k_id: i32) (gamma: f32) (coef0: f32) (degree: f32) =
   let k = kernel_from_id k_id
   let K = kernel_matrix X S k gamma coef0 degree
   let is = triu_indices t :> [s](i32, i32)
   in map (\K_i ->
-    let V_f = map2 (\j a -> a * K_i[j]) (iota v) A
-    let V = segmented_reduce (+) 0 flags V_f :> [s]f32
-    let sgn = map2 (\v rho -> v - rho) V rhos
-    let cs = map2 (\s (i, j) -> if s > 0 then i else j) sgn is
-    let votes = bincount t cs
-    let best = reduce (\a b -> if a.0 > b.0 then a else b)
-      (i32.lowest, -1) (zip votes (iota t))
-    in best.1) K
+    let prods = map2 (*) K_i A
+    let sums = segmented_reduce (+) 0 flags prods :> [s]f32
+    let dec = map2 (-) sums rhos
+    let classes = map2 (\s (i, j) -> if s > 0 then i else j) dec is
+    let votes = bincount t classes
+    let max_by_fst a b = if a.0 > b.0 then a else b
+    in (reduce_comm max_by_fst (i32.lowest, -1) (zip votes (iota t))).1) K

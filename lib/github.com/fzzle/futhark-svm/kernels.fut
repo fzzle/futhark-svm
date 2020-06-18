@@ -19,7 +19,6 @@ local let dot [n] (a: [n]f32) (b: [n]f32): f32 =
 local let sqdist [n] (a: [n]f32) (b: [n]f32): f32 =
   f32.sum (map (\x -> x * x) (map2 (-) a b))
 
--- Compute the linear kernel matrix.
 local let linear [n][m][o] (X0: [n][m]f32)
     (X1: [o][m]f32): [n][o]f32 =
   map (\x -> map (dot x) X1) X0
