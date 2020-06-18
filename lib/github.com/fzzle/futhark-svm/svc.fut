@@ -1,12 +1,12 @@
 import "../../diku-dk/segmented/segmented"
 import "../../diku-dk/sorts/radix_sort"
-import "helpers"
+import "util"
 import "kernels"
 
 -- Perform a single optimization step.
 local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
-    (P: [n]bool) (Y: [n]i8) (Cp: f32) (Cn: f32)
-    (F: [n]f32) (A: *[n]f32): (bool, f32, [n]f32, *[n]f32) =
+    (P: [n]bool) (Y: [n]i8) (F: [n]f32) (A: *[n]f32)
+    (Cp: f32) (Cn: f32) (eps: f32): (bool, f32, [n]f32, *[n]f32) =
   -- Find the extreme sample x_u, which has the minimum
   -- optimality indicator, f_u.
   let is_upper p a = (p && a < Cp) || (!p && a > 0)
@@ -71,20 +71,22 @@ local let find_rho [n] (A: [n]f32) (F: [n]f32)
   in if n_f > 0 then v_f else d / 2
 
 local let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
-    (kernel: u8) (Cp: f32) (Cn: f32) (gamma: f32)
-    (coef0: f32) (degree: f32) =
-  -- Find kernel matrix / diagonal
-  let (K, D) = match kernel
-    case 0 -> linear X
-    case 1 -> rbf X gamma
-    case _ -> polynomial X gamma coef0 degree
+    (k: kernel) (Cp: f32) (Cn: f32) (gamma: f32)
+    (coef0: f32) (degree: f32) (eps: f32) (max_iter: i32) =
+  -- Find full kernel matrix.
+  let K = kernel_matrix X X k gamma coef0 degree
+  -- Cache the kernel diagonal.
+  let D = match k
+    case #rbf -> replicate n 1
+    case _    -> map (\i -> K[i, i]) (iota n)
+  -- Initialize A / F.
   let A = replicate n 0
   let F = map (\y -> f32.i8 (-y)) Y
   let P = map (>0) Y
   let (_, i, d, F, A) =
     loop (c, i, _, F, A) = (true, 0, 0, F, A) while c do
-      let (b, d, F, A) = solve_step K D P Y Cp Cn F A
-      in (b && i < 100000000, i + 1, d, F, A)
+      let (b, d, F, A) = solve_step K D P Y F A Cp Cn eps
+      in (b && i < max_iter, i + 1, d, F, A)
   let o = find_obj A F Y
   let r = find_rho A F P Cp Cn d
   -- Multiply y on alphas for prediction.
@@ -92,36 +94,34 @@ local let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
   in (A', o, r, i)
 
 -- Requires y to be 0, 1, 2...
-entry train [n][m] (X: [n][m]f32) (Y: [n]u8)
-    (kernel: u8) (C: f32) (gamma: f32) (coef0: f32)
-    (degree: f32) =
+entry train [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
+    (C: f32) (gamma: f32) (coef0: f32) (degree: f32)
+    (eps: f32) (max_iter: i32) =
   let sorter = radix_sort_by_key (.1) u8.num_bits u8.get_bit
   let (X, Y) = unzip (sorter (zip X Y))
-  -- Number of classes.
-  let k = 1 + i32.u8 (u8.maximum Y)
-  let counts = bincount k (map i32.u8 Y)
+  let k = kernel_from_id k_id
+  -- t: Number of classes.
+  let t = 1 + i32.u8 (u8.maximum Y)
+  let counts = bincount t (map i32.u8 Y)
   let starts = exclusive_scan (+) 0 counts
-  let n_models = (k * (k - 1)) / 2
+  let n_models = (t * (t - 1)) / 2
   let out = replicate n_models (0, 0, 0)
-  let (A, ids, fs, out, _) = loop (A, ids, fs, out, p) = ([], [], [], out, 0) for i < k do
+  let (A, S, fs, out, _) = loop (A, S, fs, out, p) = ([], [], [], out, 0) for i < t do
     let si = starts[i]
     let ci = counts[i]
     let X_i = X[si:si + ci]
-    in loop (A, ids, fs, out, p) = (A, ids, fs, out, p) for j in i + 1..<k do
+    in loop (A, S, fs, out, p) = (A, S, fs, out, p) for j in i + 1..<t do
       let sj = starts[j]
       let cj = counts[j]
       let size = ci + cj
       let X_j = X[sj:sj + cj]
-      let X_p = X_i ++ X_j :> [size][m]f32
+      let X_p = concat_to size X_i X_j
       let Y_p = map (\x -> if x < ci then 1 else -1) (iota size)
-      let is = map (+si) (iota ci)
-      let js = map (+sj) (iota cj)
-      let idxs = is ++ js :> [size]i32
-      let (A_p, obj, rho, i) = solve X_p Y_p kernel C C gamma coef0 degree
-      let (A_p, idxs) = unzip (filter (\x -> x.0 > eps) (zip A_p X_p))
-      let flgs = map (==0) (iota (length idxs))
+      let (A_p, obj, rho, i) = solve X_p Y_p k C C gamma coef0 degree eps max_iter
+      let (A_p, S_p) = unzip (filter (\x -> f32.abs x.0 > eps) (zip A_p X_p))
+      let flgs = map (==0) (iota (length A_p))
       in (A ++ A_p,
-          ids ++ idxs,
+          S ++ S_p,
           fs ++ flgs,
           out with [p] = (obj, rho, i), p + 1)
 
@@ -131,23 +131,20 @@ entry train [n][m] (X: [n][m]f32) (Y: [n]u8)
   --let n_sv = length S_is
   --let S = replicate n_sv (replicate m 0)
   --let S = loop S = S for i < n_sv do S with [i] = X[S_is[i]]
-  in (A, ids, fs, rhos, objs, iter)
+  in (A, S, fs, rhos, objs, iter, t)
 
 entry predict [n][m][o][v][s] (X: [n][m]f32) (S: [o][m]f32)
-    (A: [v]f32) (rhos: [s]f32) (flags: [v]bool)
-    (kernel: u8) (C: f32) (gamma: f32) (coef0: f32)
-    (degree: f32) (k: i32) =
-  let K = match kernel
-    case _ -> map (\a -> map (\b -> dot a b) S) X
-  let is = (loop is = [] for i < k do
-            loop is = is for j in i + 1..<k do
-              is ++ [(i, j)]) :> [s](i32, i32)
+    (A: [v]f32) (rhos: [s]f32) (flags: [v]bool) (t: i32)
+    (k_id: i32) (gamma: f32) (coef0: f32) (degree: f32) =
+  let k = kernel_from_id k_id
+  let K = kernel_matrix X S k gamma coef0 degree
+  let is = triu_indices t :> [s](i32, i32)
   in map (\K_i ->
     let V_f = map2 (\j a -> a * K_i[j]) (iota v) A
     let V = segmented_reduce (+) 0 flags V_f :> [s]f32
-    let sgn = map2 (\v rho -> v + rho) V rhos
-    let cs = map2 (\(i, j) s -> if s > 0 then i else j) is sgn
-    let votes = bincount k cs
+    let sgn = map2 (\v rho -> v - rho) V rhos
+    let cs = map2 (\s (i, j) -> if s > 0 then i else j) sgn is
+    let votes = bincount t cs
     let best = reduce (\a b -> if a.0 > b.0 then a else b)
-      (i32.lowest, -1) (zip votes (iota k))
+      (i32.lowest, -1) (zip votes (iota t))
     in best.1) K
