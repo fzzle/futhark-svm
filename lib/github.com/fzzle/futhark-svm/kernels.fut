@@ -48,3 +48,9 @@ let kernel_matrix [n][m][o] (X0: [n][m]f32) (X1: [o][m]f32)
     case #linear     -> linear X0 X1
     case #polynomial -> polynomial X0 X1 gamma coef0 degree
     case #sigmoid    -> sigmoid X0 X1 gamma coef0
+
+-- Get the diagonal of the kernel matrix.
+let kernel_diag [n] (K: [n][n]f32) (k: kernel): [n]f32 =
+  match k
+    case #rbf -> replicate n 1
+    case _    -> map (\i -> K[i, i]) (iota n)

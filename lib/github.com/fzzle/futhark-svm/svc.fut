@@ -76,9 +76,7 @@ local let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
   -- Find full kernel matrix.
   let K = kernel_matrix X X k gamma coef0 degree
   -- Cache the kernel diagonal.
-  let D = match k
-    case #rbf -> replicate n 1
-    case _    -> map (\i -> K[i, i]) (iota n)
+  let D = kernel_diag K k
   -- Initialize A / F.
   let A = replicate n 0
   let F = map (\y -> f32.i8 (-y)) Y
@@ -105,8 +103,8 @@ entry train [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
   let counts = bincount t (map i32.u8 Y)
   let starts = exclusive_scan (+) 0 counts
   let n_models = (t * (t - 1)) / 2
-  let out = replicate n_models (0, 0, 0)
-  let (A, S, fs, out, _) = loop (A, S, fs, out, p) = ([], [], [], out, 0) for i < t do
+  --let out = replicate n_models (0, 0, 0)
+  let (A, S, fs, out, _) = loop (A, S, fs, out, p) = ([], [], [], [], 0) for i < t do
     let si = starts[i]
     let ci = counts[i]
     let X_i = X[si:si + ci]
@@ -123,27 +121,28 @@ entry train [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
       in (A ++ A_p,
           S ++ S_p,
           fs ++ flgs,
-          out with [p] = (obj, rho, i), p + 1)
+          out ++ [(obj, rho, i)], p + 1)
 
   let (objs, rhos, iter) = unzip3 out
-  --let svs = bincount n ids
-  --let (_, S_is) = unzip (filter (\x -> x.0 > 0) (zip svs (iota n)))
-  --let n_sv = length S_is
-  --let S = replicate n_sv (replicate m 0)
-  --let S = loop S = S for i < n_sv do S with [i] = X[S_is[i]]
+
   in (A, S, fs, rhos, objs, iter, t)
+
+let ws = 32
 
 entry predict [n][m][v][s] (X: [n][m]f32) (S: [v][m]f32)
     (A: [v]f32) (rhos: [s]f32) (flags: [v]bool) (t: i32)
     (k_id: i32) (gamma: f32) (coef0: f32) (degree: f32) =
-  let k = kernel_from_id k_id
-  let K = kernel_matrix X S k gamma coef0 degree
-  let is = triu_indices t :> [s](i32, i32)
-  in map (\K_i ->
-    let prods = map2 (*) K_i A
-    let sums = segmented_reduce (+) 0 flags prods :> [s]f32
-    let dec = map2 (-) sums rhos
-    let classes = map2 (\s (i, j) -> if s > 0 then i else j) dec is
-    let votes = bincount t classes
-    let max_by_fst a b = if a.0 > b.0 then a else b
-    in (reduce_comm max_by_fst (i32.lowest, -1) (zip votes (iota t))).1) K
+  loop p = [] for i < n / ws + 1 do
+    let k = kernel_from_id k_id
+    let from = ws * i
+    let to = i32.min (from + ws) n
+    let K = kernel_matrix X[from:to] S k gamma coef0 degree
+    let is = triu_indices t :> [s](i32, i32)
+    in p ++ map (\K_i ->
+      let prods = map2 (*) K_i A
+      let sums = segmented_reduce (+) 0 flags prods :> [s]f32
+      let dec = map2 (-) sums rhos
+      let classes = map2 (\s (i, j) -> if s > 0 then i else j) dec is
+      let votes = bincount t classes
+      let max_by_fst a b = if a.0 > b.0 then a else b
+      in (reduce max_by_fst (i32.lowest, -1) (zip votes (iota t))).1) K
