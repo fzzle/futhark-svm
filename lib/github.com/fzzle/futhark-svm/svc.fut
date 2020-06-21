@@ -172,7 +172,3 @@ entry predict [n][m][o][v][s] (X: [n][m]f32) (S: [o][m]f32)
       let max_by_fst a b = if a.0 > b.0 then a else b
       in (reduce max_by_fst (i32.lowest, -1) (zip votes (iota t))).1) K, i + ws)
   in p
-
--- todo: gpu triu
--- todo: find flags outside loop of train
--- todo: precompute segmented reduce stuffs
