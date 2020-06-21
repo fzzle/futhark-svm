@@ -6,10 +6,10 @@ type kernel =
 
 let kernel_from_id (id: i32): kernel =
   match (assert (id >= 0 && id < 4) id)
-    case 0 -> #rbf
-    case 1 -> #linear
-    case 2 -> #polynomial
-    case _ -> #sigmoid
+  case 0 -> #rbf
+  case 1 -> #linear
+  case 2 -> #polynomial
+  case _ -> #sigmoid
 
 -- Vector dot product.
 local let dot [n] (a: [n]f32) (b: [n]f32): f32 =
@@ -44,13 +44,13 @@ let kernel_matrix [n][m][o] (X0: [n][m]f32) (X1: [o][m]f32)
     (k: kernel) (gamma: f32) (coef0: f32)
     (degree: f32): [n][o]f32 =
   match k
-    case #rbf        -> rbf X0 X1 gamma
-    case #linear     -> linear X0 X1
-    case #polynomial -> polynomial X0 X1 gamma coef0 degree
-    case #sigmoid    -> sigmoid X0 X1 gamma coef0
+  case #rbf        -> rbf X0 X1 gamma
+  case #linear     -> linear X0 X1
+  case #polynomial -> polynomial X0 X1 gamma coef0 degree
+  case #sigmoid    -> sigmoid X0 X1 gamma coef0
 
 -- Get the diagonal of the kernel matrix.
 let kernel_diag [n] (K: [n][n]f32) (k: kernel): [n]f32 =
   match k
-    case #rbf -> replicate n 1
-    case _    -> map (\i -> K[i, i]) (iota n)
+  case #rbf -> replicate n 1
+  case _    -> map (\i -> K[i, i]) (iota n)
