@@ -39,7 +39,7 @@ class SVC():
     res = fsvm.train(X, y, self.kernel, self.C,
       self.gamma, self.coef0, self.degree,
       self.eps, self.max_iter)
-    (A, S, flags, rhos, obj, iter, t) = res
+    (A, I, S, flags, rhos, obj, iter, t) = res
     if self.verbose:
       obj  = fsvm.from_futhark(obj)
       iter = fsvm.from_futhark(iter)
@@ -47,24 +47,27 @@ class SVC():
       print('objective values:\n', obj)
       print('iterations:\n', iter)
     self.__support_vectors = S
+    self.__sv_indices = I
     self.__alphas = A
     self.__flags = flags
     self.__rhos = rhos
     self.__n_classes = t
     self.trained = True
 
-  def predict(self, X):
+  def predict(self, X, ws=64):
     if not self.trained:
       raise Exception('Not trained')
     p = fsvm.predict(X,
       self.__support_vectors,
       self.__alphas,
+      self.__sv_indices,
       self.__rhos,
       self.__flags,
       self.__n_classes,
       self.kernel,
       self.gamma,
       self.coef0,
-      self.degree
+      self.degree,
+      ws
     )
     return fsvm.from_futhark(p)
