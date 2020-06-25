@@ -75,9 +75,24 @@ local let find_rho [n] (A: [n]f32) (F: [n]f32)
 let ws = 1024
 let half_ws = ws / 2
 
+let get_working_set [n] (I: [n]i32) (P: [n]bool) (A: [n]f32)
+    (Cp: f32) (Cn: f32) =
+  let is_upper p a = (p && a < Cp) || (!p && a > 0)
+  let is_lower p a = (p && a > 0) || (!p && a < Cn)
+  let B_ul = map2 (\p a -> (is_upper p a, is_lower p a)) P A
+  let B_ul = map (\i -> B_ul[i]) I
+  let (B_u, B_l) = unzip B_ul
+  let S_u = scan (+) 0 (map i32.bool B_u)
+  let S_l = scan (+) 0 (map i32.bool B_l)
+  let n_u = i32.min (last S_u) half_ws
+  let n_l = (last S_l) - n_u
+  let s = map4 (\b_u s_u b_l s_l ->
+    (b_u && s_u <= n_u) || (b_l && s_l > n_l)) B_u S_u B_l S_l
+  in (unzip (filter (.0) (zip s I))).1
+
 let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
     (k: kernel) (Cp: f32) (Cn: f32) (gamma: f32)
-    (coef0: f32) (degree: f32) (eps: f32) (max_iter: i32) =
+    (coef0: f32) (degree: f32) (eps: f32) (max_iter: i32) = unsafe
   let sorter = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
   let max_outer_iter = 100
   let max_inner_iter = 100000
@@ -88,33 +103,18 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
   let P = map (>0) Y
   let (_, i, t, d, _, F, A) =
     loop (c, i, t, d0, d_data, F, A) = (true, 0, 0, 0, (0, 0, 0, 0), F, A) while c do
-      let F_I = sorter (zip F (iota n))
-      let is_upper p a = (p && a < Cp) || (!p && a > 0)
-      let is_lower p a = (p && a > 0) || (!p && a < Cn)
-      let B_ul = map2 (\p a -> (is_upper p a, is_lower p a)) P A
-      let B_ul = map (\(_, i) -> B_ul[i]) F_I
-      let (B_u, B_l) = unzip B_ul
+      let (_, I) = unzip (sorter (zip F (iota n)))
+      let I_s = get_working_set I P A Cp Cn
 
-      --let B_u = map (\(_, i) -> is_upper P[i] A[i]) F_I
-      let scan_u = scan (+) 0 (map i32.bool B_u)
-      let scan_l = scan (+) 0 (map i32.bool B_l)
-      let n_u = i32.min (last scan_u) half_ws
-      let n_l = (last scan_l) - n_u
-      let U_s = map2 (&&) B_u (map (<=n_u) scan_u)
-      let L_s = map2 (&&) B_l (map (>n_l) scan_l)
-      let s = map2 (||) U_s L_s
-      --let B_l = map (\(_, i) -> is_lower P[i] A[i]) F_I
-      let (F_s, I_s) = unzip (unzip (filter (.0) (zip s F_I))).1
-
+      let F_s = map (\i -> F[i]) I_s
       let A_s = map (\i -> A[i]) I_s
       let Y_s = map (\i -> Y[i]) I_s
-      let P_s = map (\i -> P[i]) I_s
+      let P_s = map (>0) Y_s
       let X_s = map (\i -> X[i]) I_s
       let K_s = kernel_matrix X X_s k gamma coef0 degree
       let D_s = map2 (\i sel_i -> 1) (indices I_s) I_s
 
-      let (b0, d0, F_s'0, A_s'0) = solve_step K_s D_s P_s Y F_s I_s A_s Cp Cn eps
-
+      let (b0, d0, F_s'0, A_s'0) = solve_step K_s D_s P_s Y F_s I_s (copy A_s) Cp Cn eps
       let local_eps = f32.max eps (d0 * 0.1)
 
       let (b, t', d, _, A_s') =
@@ -122,9 +122,8 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
           let (b, d, F_s', A_s') = solve_step K_s D_s P_s Y F_s I_s A_s Cp Cn local_eps
           in (b && t < max_inner_iter, t + 1, d, F_s', A_s')
 
-      let A_s = map (\i -> A[i]) I_s
       let diff_s = map3 (\a' a y -> (a' - a) * f32.i8 y) A_s' A_s Y_s
-      let F' = map2 (\f K_f -> f + f32.sum (map2 (*) K_f diff_s)) F K_s
+      let F' = map2 (\f col -> f + f32.sum (map2 (*) diff_s col)) F K_s
       let A' = scatter A I_s A_s'
 
       let (d0_prev, d0_prev_prev, sm_lo_d, sm_sh_d) = d_data
@@ -141,3 +140,4 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
   -- Returns alphas, indices of support vectors,
   -- objective value, bias, and iterations.
   in (A, o, r, i)
+

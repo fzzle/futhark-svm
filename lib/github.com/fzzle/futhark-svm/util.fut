@@ -1,19 +1,10 @@
-import "../../diku-dk/segmented/segmented"
-
-let dot [n] (as: [n]f32) (bs: [n]f32): f32 =
-  f32.sum (map2 (*) as bs)
+local module S = import "../../diku-dk/segmented/segmented"
 
 let clamp (l: f32) (x: f32) (u: f32): f32 =
   f32.max l (f32.min x u)
 
-let segmented_reduce' [n] 't (op: t -> t -> t) (ne: t)
-    (n_segments: i32) (flags: [n]bool) (segment_end_indices: [n]i32)
-    (as: [n]t) =
-  let as' = segmented_scan op ne flags as
-  in scatter (replicate n_segments ne) segment_end_indices as'
-
 let segmented_replicate 't [n] (reps: [n]i32) (vs: [n]t): []t =
-  map (\i -> vs[i]) (replicated_iota reps)
+  map (\i -> vs[i]) (S.replicated_iota reps)
 
 let exclusive_scan [n] 't (op: t -> t -> t) (ne: t) (vs: [n]t) =
   let mask i v = if bool.i32 i then v else ne
@@ -24,6 +15,14 @@ let bincount [n] (k: i32) (is: [n]i32): [k]i32 =
   let bins = replicate k 0
   let ones = replicate n 1
   in reduce_by_index bins (+) 0 is ones
+
+-- let triu_indices (n: i32): [](i32, i32) =
+--   --let tot = n * (n - 1) / 2
+--   map (\k ->
+--     let i = n - 2 - i32.f32 (f32.sqrt (-8 * f32.i32 k + 4 * f32.i32 n *(f32.i32 n - 1) - 7)/2 - 0.5)
+--     let j = k + i + 1 - n * (n - 1) / 2 + (n - i) * ((n - i) - 1) / 2
+--     in (i, j)
+--   ) (iota tot)
 
 let triu_indices (n: i32): [](i32, i32) =
   loop is = [] for i < n do

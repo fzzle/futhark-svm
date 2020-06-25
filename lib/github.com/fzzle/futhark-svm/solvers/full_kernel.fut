@@ -73,7 +73,7 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
     (k: kernel) (Cp: f32) (Cn: f32) (gamma: f32)
     (coef0: f32) (degree: f32) (eps: f32) (max_iter: i32) =
   -- Find full kernel matrix.
-  let K = kernel_matrix X X k gamma coef0 degree
+  let K = kernel_matrix_symm X k gamma coef0 degree
   -- Cache the kernel diagonal.
   let D = kernel_diag K k
   -- Initialize A / F.
