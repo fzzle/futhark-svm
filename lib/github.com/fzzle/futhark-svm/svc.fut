@@ -1,7 +1,7 @@
 import "../../diku-dk/sorts/radix_sort"
 import "util"
 import "kernels"
-import "solvers/chunk_based"
+import "solvers/tsvm_chunk_based"
 
 -- Requires y to be 0, 1, 2...
 entry train [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
