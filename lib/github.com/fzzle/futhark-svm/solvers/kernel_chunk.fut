@@ -92,7 +92,7 @@ let get_working_set [n] (I: [n]i32) (P: [n]bool) (A: [n]f32)
 
 let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
     (k: kernel) (Cp: f32) (Cn: f32) (gamma: f32)
-    (coef0: f32) (degree: f32) (eps: f32) (max_iter: i32) = unsafe
+    (coef0: f32) (degree: f32) (eps: f32) (max_iter: i32) =
   let sorter = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
   let max_outer_iter = 100
   let max_inner_iter = 100000
@@ -112,7 +112,7 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]i8)
       let P_s = map (>0) Y_s
       let X_s = map (\i -> X[i]) I_s
       let K_s = kernel_matrix X X_s k gamma coef0 degree
-      let D_s = map2 (\i sel_i -> 1) (indices I_s) I_s
+      let D_s = map2 (\i sel_i -> K_s[sel_i, i]) (indices I_s) I_s
 
       let (b0, d0, F_s'0, A_s'0) = solve_step K_s D_s P_s Y F_s I_s (copy A_s) Cp Cn eps
       let local_eps = f32.max eps (d0 * 0.1)
