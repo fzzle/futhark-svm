@@ -24,7 +24,7 @@ local let init [n][m] (X: [n][m]f32) (D: [n]f32)
   -- b=2, y_u=1, y_l=-1
   let a = f32.min beta (f32.min Cn Cp) -- a_l
   let F = map3 (\y k_u k_l -> a * (k_u - k_l) - y) Y K_u K_l
-  let A = map (\i -> if i == 0 || i == l then a else 0) i
+  let A = map (\i -> if i == 0 || i == l then a else 0) (iota n)
   in (F, A)
 
 -- Perform a single optimization step.
