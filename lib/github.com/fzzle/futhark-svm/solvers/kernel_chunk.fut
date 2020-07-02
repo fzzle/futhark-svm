@@ -22,11 +22,9 @@ local let init [n][m] (X: [n][m]f32) (D: [n]f32)
   -- be greater at the initial step. Otherwise, if a_u was greater
   -- than Cp we wouldn't be able to eliminate d_u * k_u.
   -- b=2, y_u=1, y_l=-1
-  let a_l = f32.min beta (f32.min Cn Cp)
-  let F = map3 (\y k_u k_l -> a_l * (k_u - k_l) - y) Y K_u K_l
-  let A = replicate n 0
-  let A[0] = a_l
-  let A[l] = a_l
+  let a = f32.min beta (f32.min Cn Cp) -- a_l
+  let F = map3 (\y k_u k_l -> a * (k_u - k_l) - y) Y K_u K_l
+  let A = map (\i -> if i == 0 || i == l then a else 0) i
   in (F, A)
 
 -- Perform a single optimization step.
