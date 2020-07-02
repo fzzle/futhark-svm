@@ -1,4 +1,4 @@
 module SVC = import "svc"
 
-entry train = SVC.train
+entry fit = SVC.fit
 entry predict = SVC.predict

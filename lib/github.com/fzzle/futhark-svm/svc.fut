@@ -4,7 +4,7 @@ import "kernels"
 import "solvers/kernel_chunk"
 
 -- Requires y to be 0, 1, 2...
-entry train [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
+entry fit [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
     (C: f32) (gamma: f32) (coef0: f32) (degree: f32)
     (eps: f32) (max_iter: i32) =
   let kernel = kernel_from_id k_id

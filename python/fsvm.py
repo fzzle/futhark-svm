@@ -10,6 +10,8 @@ import _main
 
 fsvm = Futhark(_main)
 
+#fsvm.lib.futhark_context_config_add_build_option(fsvm.conf, b'-cl-fast-relaxed-math')
+
 kernels = {
   'rbf': 0,
   'linear': 1,
@@ -21,6 +23,8 @@ class SVC():
   def __init__(self, kernel='rbf', C=10, gamma=0.1,
       coef0=0, degree=3, eps=0.001, max_iter=100000000,
       verbose=False):
+    if kernel not in kernels:
+      raise Exception()
     self.kernel = kernels.get(kernel)
     self.C = C
     self.gamma = gamma
@@ -31,7 +35,7 @@ class SVC():
     self.verbose = verbose
     self.trained = False
 
-  def train(self, X, y):
+  def fit(self, X, y):
     if self.trained:
       raise Exception('Already trained')
     X = X.astype(np.float32)
@@ -41,9 +45,11 @@ class SVC():
       self.eps, self.max_iter)
     (A, I, S, flags, rhos, obj, iter, t) = res
     if self.verbose:
+      _rhos = fsvm.from_futhark(rhos)
       obj  = fsvm.from_futhark(obj)
       iter = fsvm.from_futhark(iter)
       print('total iterations:', np.sum(iter))
+      print('rhos:\n', _rhos)
       print('objective values:\n', obj)
       print('iterations:\n', iter)
     self.__support_vectors = S
