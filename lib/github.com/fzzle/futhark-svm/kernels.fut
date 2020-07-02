@@ -4,6 +4,29 @@ type kernel =
   | #polynomial
   | #sigmoid
 
+type parameters =
+  { kernel: kernel
+  , gamma: f32
+  , coef0: f32
+  , degree: f32 }
+
+-- Vector dot product.
+local let dot [n] (u: [n]f32) (v: [n]f32): f32 =
+  f32.sum (map2 (*) u v)
+
+-- Squared euclidean distance.
+local let sqdist [n] (u: [n]f32) (v: [n]f32): f32 =
+  f32.sum (map (\x -> x * x) (map2 (-) u v))
+
+local let rbf [n] (p: parameters) (u: [n]f32) (v: [n]f32): f32 =
+  f32.exp (-p.gamma * sqdist u v)
+
+local let polynomial [n] (p: parameters) (u: [n]f32) (v: [n]f32): f32 =
+  (p.gamma * dot u v + p.coef0) ** p.degree
+
+local let sigmoid [n] (p: parameters) (u: [n]f32) (v: [n]f32): f32 =
+  f32.tanh (p.gamma * dot u v + p.coef0)
+
 let kernel_from_id (id: i32): kernel =
   match (assert (id >= 0 && id < 4) id)
   case 0 -> #rbf
@@ -11,46 +34,32 @@ let kernel_from_id (id: i32): kernel =
   case 2 -> #polynomial
   case _ -> #sigmoid
 
--- Vector dot product.
-local let dot [n] (a: [n]f32) (b: [n]f32): f32 =
-  f32.sum (map2 (*) a b)
+let kernel_value [n] (p: parameters) (u: [n]f32) (v: [n]f32) =
+  match p.kernel
+  case #rbf        -> rbf p u v
+  case #linear     -> dot u v
+  case #polynomial -> polynomial p u v
+  case #sigmoid    -> sigmoid p u v
 
--- Squared euclidean distance.
-local let sqdist [n] (a: [n]f32) (b: [n]f32): f32 =
-  f32.sum (map (\x -> x * x) (map2 (-) a b))
-
-local let linear [n][m][o] (X0: [n][m]f32)
-    (X1: [o][m]f32): [n][o]f32 =
-  map (\x -> map (dot x) X1) X0
-
-local let rbf [n][m][o] (X0: [n][m]f32) (X1: [o][m]f32)
-    (gamma: f32): [n][o]f32 =
-  let f a b = f32.exp (-gamma * sqdist a b)
-  in map (\x -> map (f x) X1) X0
-
-local let polynomial [n][m][o] (X0: [n][m]f32) (X1: [o][m]f32)
-    (gamma: f32) (coef0: f32) (degree: f32): [n][o]f32 =
-  let f a b = (gamma * dot a b + coef0) ** degree
-  in map (\x -> map (f x) X1) X0
-
-local let sigmoid [n][m][o] (X0: [n][m]f32) (X1: [o][m]f32)
-    (gamma: f32) (coef0: f32): [n][o]f32 =
-  let f a b = f32.tanh (gamma * dot a b + coef0)
-  in map (\x -> map (f x) X1) X0
+let kernel_row [n][m] (p: parameters)
+    (X: [n][m]f32) (u: [m]f32): [n]f32 =
+  map (kernel_value p u) X
 
 -- Get kernel matrix for a dataset. K[i, j] corresponds to the
 -- kernel value computed between samples x_i and x_j.
-let kernel_matrix [n][m][o] (X0: [n][m]f32) (X1: [o][m]f32)
-    (k: kernel) (gamma: f32) (coef0: f32)
-    (degree: f32): [n][o]f32 =
-  match k
-  case #rbf        -> rbf X0 X1 gamma
-  case #linear     -> linear X0 X1
-  case #polynomial -> polynomial X0 X1 gamma coef0 degree
-  case #sigmoid    -> sigmoid X0 X1 gamma coef0
+let kernel_matrix [n][m][o] (p: parameters)
+    (X0: [n][m]f32) (X1: [o][m]f32): [n][o]f32 =
+  map (kernel_row p X1) X0
 
--- Get the diagonal of the kernel matrix.
-let kernel_diag [n] (K: [n][n]f32) (k: kernel): [n]f32 =
-  match k
+-- Get the diagonal of a full kernel matrix.
+let kernel_diag [n] (p: parameters) (K: [n][n]f32): [n]f32 =
+  match p.kernel
   case #rbf -> replicate n 1
   case _    -> map (\i -> K[i, i]) (iota n)
+
+-- Compute the diagonal of a kernel matrix.
+let compute_kernel_diag [n][m] (p: parameters)
+    (X: [n][m]f32): [n]f32 =
+  match p.kernel
+  case #rbf -> replicate n 1
+  case _    -> map (\u -> kernel_value p u u) X

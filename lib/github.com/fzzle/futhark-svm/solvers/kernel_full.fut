@@ -16,17 +16,15 @@ local let init [n] (K: [n][n]f32) (D: [n]f32) (P: [n]bool)
   -- be greater at the initial step. Otherwise, if a_u was greater
   -- than Cp we wouldn't be able to eliminate d_u * k_u.
   -- b=2, y_u=1, y_l=-1
-  let a_l = f32.min beta (f32.min Cn Cp)
-  let F = map3 (\y k_u k_l -> a_l * (k_u - k_l) - y) Y K_u K[l]
-  let A = replicate n 0
-  let A[0] = a_l
-  let A[l] = a_l
-  in (A, F)
+  let a = f32.min beta (f32.min Cn Cp) -- a_l
+  let F = map3 (\y k_u k_l -> f32.mad a (k_u - k_l) (-y)) Y K_u K[l]
+  let A = map (\i -> if i == 0 || i == l then a else 0) (iota n)
+  in (F, A)
 
 -- Perform a single optimization step.
 local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
-    (P: [n]bool) (Y: [n]f32) (F: [n]f32) (A: *[n]f32)
-    (Cp: f32) (Cn: f32) (eps: f32): (bool, f32, [n]f32, *[n]f32) =
+    (P: [n]bool) (Y: [n]f32) (F: [n]f32) (A: [n]f32)
+    (Cp: f32) (Cn: f32) (eps: f32): (bool, f32, [n]f32, [n]f32) =
   -- Find the extreme sample x_u in X_upper, which has the minimum
   -- optimality indicator, f_u.
   let is_upper p a = (p && a < Cp) || (!p && a > 0)
@@ -34,7 +32,6 @@ local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
   let F_u_I = map3 (\b f i ->
     if b then (f, i) else (f32.inf, -1)) B_u F (iota n)
   let min_by_fst a b = if a.0 < b.0 then a else b
-  -- Can use reduce_comm because order doesn't matter at all.
   let (f_u, u) = reduce_comm min_by_fst (f32.inf, -1) F_u_I
   -- Find f_max so we can check if we're done.
   let is_lower p a = (p && a > 0) || (!p && a < Cn)
@@ -71,9 +68,9 @@ local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
     -- f + d_u * k_u + d_l * k_l
     f32.mad d_u k_u (f32.mad d_l k_l f)) F K_u K[l]
   -- Write back updated alphas.
-  let A[u] = a_u
-  let A[l] = a_l
-  in (true, 0, F', A)
+  let A' = map2 (\a i ->
+    if i == u then a_u else if i == l then a_l else a) A (iota n)
+  in (true, 0, F', A')
 
 -- Find the objective value.
 local let find_obj [n] (A: [n]f32) (F: [n]f32) (Y: [n]f32): f32 =
@@ -92,19 +89,19 @@ local let find_rho [n] (A: [n]f32) (F: [n]f32)
   in if n_f > 0 then v_f else d / 2
 
 let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
-    (k: kernel) (Cp: f32) (Cn: f32) (gamma: f32)
-    (coef0: f32) (degree: f32) (eps: f32) (max_it: i32) =
+    (p: parameters) (Cp: f32) (Cn: f32)
+    (eps: f32) (max_it: i32) =
   -- Find full kernel matrix.
-  let K = kernel_matrix X X k gamma coef0 degree
+  let K = kernel_matrix p X X
   -- Cache the kernel diagonal.
-  let D = kernel_diag K k
+  let D = kernel_diag p K
   let P = map (>0) Y
   -- Initialize A & F.
-  let (A, F) = init K D P Y Cp Cn
+  let (F, A) = init K D P Y Cp Cn
   let (_, i, d, F, A) =
-    loop (c, i, _, F, A) = (true, 0, 0, F, A) while c do
+    loop (c, i, _, F, A) = (true, 1, 0, F, A) while c do
       let (b, d, F', A') = solve_step K D P Y F A Cp Cn eps
-      in (b && i <= max_it, i + 1, d, F', A')
+      in (b && i < max_it - 1, i + 1, d, F', A')
   let obj = find_obj A F Y
   let rho = find_rho A F P Cp Cn d
   -- Multiply y on alphas for prediction.
