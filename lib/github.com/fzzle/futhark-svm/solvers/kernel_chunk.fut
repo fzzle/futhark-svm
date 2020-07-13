@@ -5,8 +5,8 @@ import "../kernels"
 let ws = 1024
 let tau = 1e-6f32
 
--- Performs the initial step before we start sorting the optimality
--- indicators, such that it has more to go by than simply +1, -1.
+-- | Performs the initial step before sort the optimality indicators,
+-- such that it has more to go by than simply +1, -1.
 local let init_step [n][m] (X: [n][m]f32) (D: [n]f32)
     (P: [n]bool) (Y: [n]f32) (Cp: f32) (Cn: f32)
     (p: parameters): (*[n]f32, *[n]f32) =
@@ -27,8 +27,8 @@ local let init_step [n][m] (X: [n][m]f32) (D: [n]f32)
   let A = map (\i -> if i == 0 || i == l then a else 0) (iota n)
   in (F, A)
 
--- Perform a single optimization step.
-local let solve_inner_step [n] (K: [n][n]f32) (D: [n]f32)
+-- | Performs a single optimization step.
+local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
     (P: [n]bool) (Y: [n]f32) (F: [n]f32) (A: [n]f32)
     (Cp: f32) (Cn: f32) (eps: f32): (bool, f32, [n]f32, [n]f32) =
   -- Find the extreme sample x_u in X_upper, which has the minimum
@@ -78,9 +78,10 @@ local let solve_inner_step [n] (K: [n][n]f32) (D: [n]f32)
     if i == u then a_u else if i == l then a_l else a) (iota n) A
   in (true, d, F', A')
 
--- local let solve_outer_step [n][m] =
---   let sorter = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
---   let I_ws = map (.1) (sorter (zip F (iota n)))
+-- local let working_set
+
+-- local let solve_working_set [n][m] =
+--   let I_ws = working_set
 --   -- Sequential gather to keep X from entering GPU memory.
 --   let X_ws = #[sequential] gather I_ws X_s
 --   -- Compute working set kernel matrix rows.
@@ -92,11 +93,11 @@ local let solve_inner_step [n] (K: [n][n]f32) (D: [n]f32)
 --   in
 --   let F_s
 
--- Find the objective value.
+-- | Finds the objective value.
 local let find_obj [n] (A: [n]f32) (F: [n]f32) (Y: [n]f32): f32 =
   -0.5 * f32.sum (map3 (\a f y -> a * (1 - f * y)) A F Y)
 
--- Find the bias.
+-- | Finds the bias.
 local let find_rho [n] (A: [n]f32) (F: [n]f32)
     (P: [n]bool) (Cp: f32) (Cn: f32) (d: f32): f32 =
   -- Find free x to find rho.
@@ -108,8 +109,10 @@ local let find_rho [n] (A: [n]f32) (F: [n]f32)
   let v_f = f32.sum F_f / f32.i32 n_f
   in if n_f > 0 then v_f else d / 2
 
-let get_working_set [n] (I: [n]i32) (P: [n]bool) (A: [n]f32)
-    (Cp: f32) (Cn: f32) =
+let get_working_set [n] (P: [n]bool) (F: [n]f32)
+    (A: [n]f32) (Cp: f32) (Cn: f32) =
+  let sort = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
+  let I = map (.1) (sort (zip F (iota n)))
   let is_upper p a = (p && a < Cp) || (!p && a > 0)
   let is_lower p a = (p && a > 0) || (!p && a < Cn)
   let B_ul = map2 (\p a -> (is_upper p a, is_lower p a)) P A
@@ -120,59 +123,60 @@ let get_working_set [n] (I: [n]i32) (P: [n]bool) (A: [n]f32)
   let n_l = (last S_l) - n_u
   let s = map4 (\b_u s_u b_l s_l ->
     (b_u && s_u <= n_u) || (b_l && s_l > n_l)) B_u S_u B_l S_l
-  --
+  -- TODO: Somehow compensate for overlapping upper/lower.
   let s_i = scatter (replicate n false) I s
   in filter (\i -> s_i[i]) (iota n)
   -- in (unzip (filter (.0) (zip s I))).1 -- s[i]
 
 let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     (p: parameters) (Cp: f32) (Cn: f32)
-    (eps: f32) (max_iter: i32) = #[unsafe]
-  let sort = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
+    (eps: f32) (max_iter: i32) =
   let max_outer_iter = 100
   let max_inner_iter = 100000
   -- let max_iter
   let P = map (>0) Y
   let D = compute_kernel_diag p X
   let (F, A) = init_step X D P Y Cp Cn p
-
   let d = {p=2f32, pp=f32.inf, swap=0, same=0}
-  let statics = zip3 Y P D
-
   -- i: Outer iterations, j: Inner.
   let (i, j, c) = (0i32, 1i32, true)
   let (_, i, j, d, F, A) = loop (c, i, j, d, F, A) while c do
-      let (_, I) = unzip (sort (zip F (iota n)))
-      let I_ws = get_working_set I P A Cp Cn
-
-      let F_s = map (\i -> F[i]) I_ws
-      let A_s = map (\i -> A[i]) I_ws
-      let X_s = #[sequential] gather X I_ws
-      let (Y_s, P_s, D_s) = unzip3 (map (\i -> statics[i]) I_ws)
-      let K = kernel_matrix p X X_s
-      let K_s = map (\i -> K[i]) I_ws
-      -- Find the global difference f_l - f_u
-      let (b0, d0, F_s0, A_s0) = solve_inner_step K_s D_s P_s Y_s F_s A_s Cp Cn eps
-
-      -- let stop = !b0 || d.same >= 10 || d.swap >= 10
-      -- in if stop then (false, i, j, )
-
-      let local_eps = f32.max eps (d0 * 0.1)
-      -- Solve the working set problem
-      let (_, t', _, A_s') =
-        loop (c, t, F_s, A_s) = (b0, 1, F_s0, A_s0) while c do
-          let (b, _, F_s', A_s') = solve_inner_step K_s D_s P_s Y_s F_s A_s Cp Cn local_eps
-          in (b && t < max_inner_iter, t + 1, F_s', A_s')
-
-      let diff_s = map3 (\a' a y -> (a' - a) * y) A_s' A_s Y_s
-      let F' = map2 (\f K_i -> f + f32.sum (map2 (*) diff_s K_i)) F K
-      let A' = scatter A I_ws A_s'
-
+      let I_ws = get_working_set P F A Cp Cn
+      -- Gather ws data.
+      let D_ws = gather D I_ws
+      let P_ws = gather P I_ws
+      let Y_ws = gather Y I_ws
+      let F_ws = gather F I_ws
+      let A_ws = gather A I_ws
+      -- Get full kernel rows for ws.
+      let X_ws = #[sequential] gather X I_ws
+      let K_ws = kernel_matrix p X X_ws
+      let K_wsx2 = gather K_ws I_ws
+      let solve_step' = solve_step K_wsx2 D_ws P_ws Y_ws
+      -- Find the global difference d0=f_l-f_u.
+      let (b0, d0, F_s0, A_s0) = solve_step' F_ws A_ws Cp Cn eps
+      -- Check if we're done: If d0 < eps or if it's stuck
+      -- (using the same heuristics as fsvm).
       let same = if f32.abs (d0 - d.p)  < tau then d.same + 1 else 0
       let swap = if f32.abs (d0 - d.pp) < tau then d.swap + 1 else 0
       let stop = !b0 || d.same >= 10 || d.swap >= 10
+      -- Update difference infos.
       let d' = {p=d0, pp=d.p, same, swap}
-      in (!stop && i != max_outer_iter, i + 1, j + t', d', F', A')
+      in if stop then (false, i, j, d', F, A) else
+      --
+      let eps_ws = f32.max eps (d0 * 0.1)
+      -- Solve the working set problem
+      let (_, t', _, A_s') =
+        loop (c, t, F_s, A_s) = (b0, 1, F_s0, A_s0) while c do
+          let (b, _, F_s', A_s') = solve_step' F_s A_s Cp Cn eps_ws
+          in (b && t < max_inner_iter, t + 1, F_s', A_s')
+
+      let d_s = map3 (\a' a y -> (a' - a) * y) A_s' A_ws Y_ws
+      let F' = map2 (\f K_i -> f + f32.sum (map2 (*) d_s K_i)) F K_ws
+      let A' = scatter A I_ws A_s'
+
+      -- bare true og så i != max_outer i stedet for while c?
+      in (i != max_outer_iter, i + 1, j + t', d', F', A')
   let obj = find_obj A F Y
   let rho = find_rho A F P Cp Cn d.p
   -- Multiply y on alphas for prediction.
