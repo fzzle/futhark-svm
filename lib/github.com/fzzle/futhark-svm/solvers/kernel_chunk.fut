@@ -7,7 +7,7 @@ let tau = 1e-6f32
 
 -- Performs the initial step before we start sorting the optimality
 -- indicators, such that it has more to go by than simply +1, -1.
-local let init [n][m] (X: [n][m]f32) (D: [n]f32)
+local let init_step [n][m] (X: [n][m]f32) (D: [n]f32)
     (P: [n]bool) (Y: [n]f32) (Cp: f32) (Cn: f32)
     (p: parameters): ([n]f32, [n]f32) =
   let K_u = kernel_row p X X[0]
@@ -74,9 +74,9 @@ local let solve_inner_step [n] (K: [n][n]f32) (D: [n]f32)
     -- f + d_u * k_u + d_l * k_l
     f32.mad d_u k_u (f32.mad d_l k_l f)) F K_u K[l]
   -- Write back updated alphas.
-  let A = map2 (\i a ->
+  let A' = map2 (\i a ->
     if i == u then a_u else if i == l then a_l else a) (iota n) A
-  in (true, d, F', A)
+  in (true, d, F', A')
 
 -- local let solve_outer_step [n][m] =
 --   let sorter = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
@@ -111,54 +111,62 @@ let get_working_set [n] (I: [n]i32) (P: [n]bool) (A: [n]f32)
   let n_l = (last S_l) - n_u
   let s = map4 (\b_u s_u b_l s_l ->
     (b_u && s_u <= n_u) || (b_l && s_l > n_l)) B_u S_u B_l S_l
-  in (unzip (filter (.0) (zip s I))).1
+  in (unzip (filter (.0) (zip s I))).1 -- s[i]
 
 let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     (p: parameters) (Cp: f32) (Cn: f32)
     (eps: f32) (max_iter: i32) =
-  let sorter = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
+  let sort = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
   let max_outer_iter = 100
   let max_inner_iter = 100000
+  -- let max_iter
 
   let P = map (>0) Y
   let D = compute_kernel_diag p X
-  let (F, A) = init X D P Y Cp Cn p
-  let d = {p=f32.inf, pp=f32.inf, swap=0, same=0}
-  let statics = zip4 Y P X D
+  let (F, A) = init_step X D P Y Cp Cn p
+  let d = {p=2f32, pp=f32.inf, swap=0, same=0}
+  let statics = zip3 Y P D
 
-  let (_, i, t, d, F, A) =
-    loop (c, i, t, d, F, A) = (true, 0, 0, d, F, A) while c do
-      let (_, I) = unzip (sorter (zip F (iota n)))
-      let I_s = get_working_set I P A Cp Cn
+  let i = 0
+  let j = 1
+  let c = true
+  let (_, i, j, d, F, A) =
+    loop (c, i, j, d, F, A) while c do
+      let (_, I) = unzip (sort (zip F (iota n)))
+      let I_ws = get_working_set I P A Cp Cn
 
-      let F_s = map (\i -> F[i]) I_s
-      let A_s = map (\i -> A[i]) I_s
-      let (Y_s, P_s, X_s, D_s) = unzip4 (map (\i -> statics[i]) I_s)
+      let F_s = map (\i -> F[i]) I_ws
+      let A_s = map (\i -> A[i]) I_ws
+      let X_s = #[sequential] map (\i -> X[i]) I_ws
+      let (Y_s, P_s, D_s) = unzip3 (map (\i -> statics[i]) I_ws)
       let K = kernel_matrix p X X_s
-      let K_s = map (\i -> K[i]) I_s
+      let K_s = map (\i -> K[i]) I_ws
+      -- Find the global difference f_l - f_u
+      let (b0, d0, F_s0, A_s0) = solve_inner_step K_s D_s P_s Y_s F_s A_s Cp Cn eps
 
-      let (b0, d0, F_s'0, A_s'0) = solve_inner_step K_s D_s P_s Y_s F_s (copy A_s) Cp Cn eps
+      -- let stop = !b0 || d.same >= 10 || d.swap >= 10
+      -- in if stop then (false, i, j, )
+
       let local_eps = f32.max eps (d0 * 0.1)
-
-      let (b, t', _, _, A_s') =
-        loop (c, t, _, F_s, A_s) = (b0, 1, 0, F_s'0, A_s'0) while c do
-          let (b, d, F_s', A_s') = solve_inner_step K_s D_s P_s Y_s F_s A_s Cp Cn local_eps
-          in (b && t < max_inner_iter, t + 1, d, F_s', A_s')
+      -- Solve the working set problem
+      let (_, t', _, A_s') =
+        loop (c, t, F_s, A_s) = (b0, 1, F_s0, A_s0) while c do
+          let (b, _, F_s', A_s') = solve_inner_step K_s D_s P_s Y_s F_s A_s Cp Cn local_eps
+          in (b && t < max_inner_iter, t + 1, F_s', A_s')
 
       let diff_s = map3 (\a' a y -> (a' - a) * y) A_s' A_s Y_s
       let F' = map2 (\f col -> f + f32.sum (map2 (*) diff_s col)) F K
-      let A' = scatter A I_s A_s'
+      let A' = scatter A I_ws A_s'
 
       let same = if f32.abs (d0 - d.p)  < tau then d.same + 1 else 0
       let swap = if f32.abs (d0 - d.pp) < tau then d.swap + 1 else 0
       let stop = d0 < eps || d.same >= 10 || d.swap >= 10
       let d' = {p=d0, pp=d.p, same, swap}
-      in (!stop && i != max_outer_iter, i + 1, t + t', d', F', A')
-  let o = find_obj A F Y
-  let r = find_rho A F P Cp Cn d.p
+      in (!stop && i != max_outer_iter, i + 1, j + t', d', F', A')
+  let obj = find_obj A F Y
+  let rho = find_rho A F P Cp Cn d.p
   -- Multiply y on alphas for prediction.
   let A = map2 (*) A Y
-  -- Returns alphas, indices of support vectors,
-  -- objective value, bias, and iterations.
-  in (A, o, r, i)
+  -- Returns alphas, objective value, bias, and iterations.
+  in (A, obj, rho, i)
 

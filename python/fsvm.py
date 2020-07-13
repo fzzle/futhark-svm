@@ -38,9 +38,12 @@ class SVC():
   def fit(self, X, y):
     if self.trained:
       raise Exception('Already trained')
-    X = X.astype(np.float32)
-    y = y.astype(np.uint8)
-    res = fsvm.train(X, y, self.kernel, self.C,
+    # X = X.astype(np.float32)
+    # y = y.astype(np.uint8)
+    # res = fsvm.fit_gridsearch(X, y, self.kernel, np.array([self.C]),
+    #   self.gamma, self.coef0, self.degree,
+    #   self.eps, self.max_iter)
+    res = fsvm.fit(X, y, self.kernel, self.C,
       self.gamma, self.coef0, self.degree,
       self.eps, self.max_iter)
     (A, I, S, flags, rhos, obj, iter, t) = res
@@ -77,3 +80,4 @@ class SVC():
       ws
     )
     return fsvm.from_futhark(p)
+
