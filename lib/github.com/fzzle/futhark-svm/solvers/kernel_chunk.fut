@@ -9,7 +9,7 @@ let tau = 1e-6f32
 -- indicators, such that it has more to go by than simply +1, -1.
 local let init_step [n][m] (X: [n][m]f32) (D: [n]f32)
     (P: [n]bool) (Y: [n]f32) (Cp: f32) (Cn: f32)
-    (p: parameters): ([n]f32, [n]f32) =
+    (p: parameters): (*[n]f32, *[n]f32) =
   let K_u = kernel_row p X X[0]
   let V_l_I = map4 (\p d k_u i ->
     if !p -- b < 0 iff. !p since b=f_u-f_l, f_u=-1, f_l=1
@@ -22,7 +22,7 @@ local let init_step [n][m] (X: [n][m]f32) (D: [n]f32)
   -- be greater at the initial step. Otherwise, if a_u was greater
   -- than Cp we wouldn't be able to eliminate d_u * k_u.
   -- b=2, y_u=1, y_l=-1
-  let a = f32.min beta (f32.min Cn Cp) -- a_l
+  let a = f32.min beta (f32.min Cn Cp) -- Originally a_l
   let F = map3 (\y k_u k_l -> a * (k_u - k_l) - y) Y K_u K_l
   let A = map (\i -> if i == 0 || i == l then a else 0) (iota n)
   in (F, A)
@@ -80,7 +80,16 @@ local let solve_inner_step [n] (K: [n][n]f32) (D: [n]f32)
 
 -- local let solve_outer_step [n][m] =
 --   let sorter = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
---   let (_, I) = unzip (sorter (zip F (iota n)))
+--   let I_ws = map (.1) (sorter (zip F (iota n)))
+--   -- Sequential gather to keep X from entering GPU memory.
+--   let X_ws = #[sequential] gather I_ws X_s
+--   -- Compute working set kernel matrix rows.
+--   let K_ws = kernel_matrix p X X_s
+--   let K_wsx2 = gather I_ws K_ws
+--   let F_ws = gather I_ws F
+--   let A_ws = gather I_ws A
+
+--   in
 --   let F_s
 
 -- Find the objective value.
@@ -111,33 +120,34 @@ let get_working_set [n] (I: [n]i32) (P: [n]bool) (A: [n]f32)
   let n_l = (last S_l) - n_u
   let s = map4 (\b_u s_u b_l s_l ->
     (b_u && s_u <= n_u) || (b_l && s_l > n_l)) B_u S_u B_l S_l
-  in (unzip (filter (.0) (zip s I))).1 -- s[i]
+  --
+  let s_i = scatter (replicate n false) I s
+  in filter (\i -> s_i[i]) (iota n)
+  -- in (unzip (filter (.0) (zip s I))).1 -- s[i]
 
 let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     (p: parameters) (Cp: f32) (Cn: f32)
-    (eps: f32) (max_iter: i32) =
+    (eps: f32) (max_iter: i32) = #[unsafe]
   let sort = radix_sort_float_by_key (.0) f32.num_bits f32.get_bit
   let max_outer_iter = 100
   let max_inner_iter = 100000
   -- let max_iter
-
   let P = map (>0) Y
   let D = compute_kernel_diag p X
   let (F, A) = init_step X D P Y Cp Cn p
+
   let d = {p=2f32, pp=f32.inf, swap=0, same=0}
   let statics = zip3 Y P D
 
-  let i = 0
-  let j = 1
-  let c = true
-  let (_, i, j, d, F, A) =
-    loop (c, i, j, d, F, A) while c do
+  -- i: Outer iterations, j: Inner.
+  let (i, j, c) = (0i32, 1i32, true)
+  let (_, i, j, d, F, A) = loop (c, i, j, d, F, A) while c do
       let (_, I) = unzip (sort (zip F (iota n)))
       let I_ws = get_working_set I P A Cp Cn
 
       let F_s = map (\i -> F[i]) I_ws
       let A_s = map (\i -> A[i]) I_ws
-      let X_s = #[sequential] map (\i -> X[i]) I_ws
+      let X_s = #[sequential] gather X I_ws
       let (Y_s, P_s, D_s) = unzip3 (map (\i -> statics[i]) I_ws)
       let K = kernel_matrix p X X_s
       let K_s = map (\i -> K[i]) I_ws
@@ -155,12 +165,12 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
           in (b && t < max_inner_iter, t + 1, F_s', A_s')
 
       let diff_s = map3 (\a' a y -> (a' - a) * y) A_s' A_s Y_s
-      let F' = map2 (\f col -> f + f32.sum (map2 (*) diff_s col)) F K
+      let F' = map2 (\f K_i -> f + f32.sum (map2 (*) diff_s K_i)) F K
       let A' = scatter A I_ws A_s'
 
       let same = if f32.abs (d0 - d.p)  < tau then d.same + 1 else 0
       let swap = if f32.abs (d0 - d.pp) < tau then d.swap + 1 else 0
-      let stop = d0 < eps || d.same >= 10 || d.swap >= 10
+      let stop = !b0 || d.same >= 10 || d.swap >= 10
       let d' = {p=d0, pp=d.p, same, swap}
       in (!stop && i != max_outer_iter, i + 1, j + t', d', F', A')
   let obj = find_obj A F Y
