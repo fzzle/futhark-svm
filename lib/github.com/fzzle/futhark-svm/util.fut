@@ -5,13 +5,14 @@ let clamp (l: f32) (x: f32) (u: f32): f32 =
 
 -- | Returns array of upper triangular indices of a n×n matrix.
 -- Result has same order as if traversed by for i<n (for j=i+1..<n).
+-- https://stackoverflow.com/a/27088560/2984068
 let triu (n: i32): *[](i32, i32) =
   let u = n*(n-1)
   let p = u/2
-  let i2triu (k: i32) = -- Convert linear index k to triu.
+  let k2triu (k: i32) = -- Convert linear index k to triu.
     let i = n-2-i32.f32 (f32.sqrt (f32.i32 (-8*k+4*u-7))/2-0.5)
     in (i, k+i+1-p+(n-i)*((n-i)-1)/2)
-  in map i2triu (iota p)
+  in map k2triu (iota p)
 
 -- | Like replicate but segmented.
 let segmented_replicate 't [n] (ns: [n]i32) (vs: [n]t): []t =
