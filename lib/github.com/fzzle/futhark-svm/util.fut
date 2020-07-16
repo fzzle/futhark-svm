@@ -1,30 +1,37 @@
-local module S = import "../../diku-dk/segmented/segmented"
+import "../../diku-dk/segmented/segmented"
 
 let clamp (l: f32) (x: f32) (u: f32): f32 =
   f32.max l (f32.min x u)
 
-let segmented_replicate 't [n] (reps: [n]i32) (vs: [n]t): []t =
-  map (\i -> vs[i]) (S.replicated_iota reps)
+-- | Returns array of upper triangular indices of a n×n matrix.
+-- Result has same order as if traversed by for i<n (for j=i+1..<n).
+let triu (n: i32): *[](i32, i32) =
+  let u = n*(n-1)
+  let p = u/2
+  let i2triu (k: i32) = -- Convert linear index k to triu.
+    let i = n-2-i32.f32 (f32.sqrt (f32.i32 (-8*k+4*u-7))/2-0.5)
+    in (i, k+i+1-p+(n-i)*((n-i)-1)/2)
+  in map i2triu (iota p)
 
+-- | Like replicate but segmented.
+let segmented_replicate 't [n] (ns: [n]i32) (vs: [n]t): []t =
+  map (\i -> vs[i]) (replicated_iota ns)
+
+-- | Segmented replicate with predetermined size.
+let segmented_replicate_to 't [n] (k: i32) (ns: [n]i32) (vs: [n]t): [k]t =
+  segmented_replicate ns vs :> [k]t
+
+let gather [n][m] 't (xs: [n]t) (is: [m]i32): *[m]t =
+  map (\i -> xs[i]) is
+
+-- | Exclusive prefix sum.
 let exclusive_scan [n] 't (op: t -> t -> t) (ne: t) (vs: [n]t) =
   let mask i v = if bool.i32 i then v else ne
   let vs' = map2 mask (iota n) (rotate (-1) vs)
   in scan op ne vs'
 
-let bincount [n] (k: i32) (is: [n]i32): [k]i32 =
+-- | Counts positive numbers < k into k bins.
+let bincount [n] (k: i32) (vs: [n]i32): [k]i32 =
   let bins = replicate k 0
   let ones = replicate n 1
-  in reduce_by_index bins (+) 0 is ones
-
--- let triu_indices (n: i32): [](i32, i32) =
---   --let tot = n * (n - 1) / 2
---   map (\k ->
---     let i = n - 2 - i32.f32 (f32.sqrt (-8 * f32.i32 k + 4 * f32.i32 n *(f32.i32 n - 1) - 7)/2 - 0.5)
---     let j = k + i + 1 - n * (n - 1) / 2 + (n - i) * ((n - i) - 1) / 2
---     in (i, j)
---   ) (iota tot)
-
-let triu_indices (n: i32): [](i32, i32) =
-  loop is = [] for i < n do
-    loop is = is for j in i + 1..<n do
-      is ++ [(i, j)]
+  in reduce_by_index bins (+) 0 vs ones
