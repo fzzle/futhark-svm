@@ -1,4 +1,4 @@
-import "../util"
+import "../lib/github.com/fzzle/futhark-svm/util"
 
 -- ==
 -- entry: test_triu
