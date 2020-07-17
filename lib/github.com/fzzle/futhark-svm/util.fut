@@ -9,9 +9,10 @@ let clamp (l: f32) (x: f32) (u: f32): f32 =
 let triu (n: i32): *[](i32, i32) =
   let u = n*(n-1)
   let p = u/2
-  let k2triu (k: i32) = -- Convert linear index k to triu.
+  -- Converts linear index k to triu.
+  let k2triu (k: i32) =
     let i = n-2-i32.f32 (f32.sqrt (f32.i32 (-8*k+4*u-7))/2-0.5)
-    in (i, k+i+1-p+(n-i)*((n-i)-1)/2)
+    in (i, k+i+1-p+(n-i)*(n-i-1)/2)
   in map k2triu (iota p)
 
 -- | Like replicate but segmented.
@@ -25,7 +26,7 @@ let segmented_replicate_to 't [n] (k: i32) (ns: [n]i32) (vs: [n]t): [k]t =
 let gather [n][m] 't (xs: [n]t) (is: [m]i32): *[m]t =
   map (\i -> xs[i]) is
 
--- | Exclusive prefix sum.
+-- | Exclusive prefix scan.
 let exclusive_scan [n] 't (op: t -> t -> t) (ne: t) (vs: [n]t) =
   let mask i v = if bool.i32 i then v else ne
   let vs' = map2 mask (iota n) (rotate (-1) vs)
