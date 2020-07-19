@@ -168,10 +168,10 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     let A' = scatter A I_ws A_ws'
     -- bare true og så i != max_outer i stedet for while c?
     in (i != max_outer_iter, i + 1, j + k, d', F', A')
-  let obj = find_obj A F Y
-  let rho = find_rho A F P Cp Cn d.p
+  let o = find_obj A F Y
+  let r = find_rho A F P Cp Cn d.p
   -- Multiply y on alphas for prediction.
   let A = map2 (*) A Y
   -- Returns alphas, objective value, bias, and iterations.
-  in (A, obj, rho, j)
+  in (A, o, r, j)
 
