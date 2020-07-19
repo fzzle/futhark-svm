@@ -1,7 +1,7 @@
 import "../util"
 import "../kernels"
 
--- The initial step is slightly simpler to solve. Doesn't provide a
+-- | The initial step is slightly simpler to solve. Doesn't provide a
 -- huge boost here, but it does improve the chunk-based solver.
 local let init [n] (K: [n][n]f32) (D: [n]f32) (P: [n]bool)
     (Y: [n]f32) (Cp: f32) (Cn: f32): ([n]f32, [n]f32) =
@@ -17,11 +17,11 @@ local let init [n] (K: [n][n]f32) (D: [n]f32) (P: [n]bool)
   -- than Cp we wouldn't be able to eliminate d_u * k_u.
   -- b=2, y_u=1, y_l=-1
   let a = f32.min beta (f32.min Cn Cp) -- a_l
-  let F = map3 (\y k_u k_l -> f32.mad a (k_u - k_l) (-y)) Y K_u K[l]
+  let F = map3 (\y k_u k_l -> a * (k_u - k_l) - y) Y K_u K[l]
   let A = map (\i -> if i == 0 || i == l then a else 0) (iota n)
   in (F, A)
 
--- Perform a single optimization step.
+-- | Performs a single optimization step.
 local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
     (P: [n]bool) (Y: [n]f32) (F: [n]f32) (A: [n]f32)
     (Cp: f32) (Cn: f32) (eps: f32): (bool, f32, [n]f32, [n]f32) =
@@ -70,7 +70,7 @@ local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
   -- Write back updated alphas.
   let A' = map2 (\a i ->
     if i == u then a_u else if i == l then a_l else a) A (iota n)
-  in (true, 0, F', A')
+  in (true, d, F', A')
 
 -- Find the objective value.
 local let find_obj [n] (A: [n]f32) (F: [n]f32) (Y: [n]f32): f32 =
@@ -102,9 +102,9 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     loop (c, i, _, F, A) = (true, 1, 0, F, A) while c do
       let (b, d, F', A') = solve_step K D P Y F A Cp Cn eps
       in (b && i < max_it - 1, i + 1, d, F', A')
-  let obj = find_obj A F Y
-  let rho = find_rho A F P Cp Cn d
+  let o = find_obj A F Y
+  let r = find_rho A F P Cp Cn d
   -- Multiply y on alphas for prediction.
   let A = map2 (*) A Y
   -- Returns alphas, objective value, bias, and iterations.
-  in (A, obj, rho, i)
+  in (A, o, r, i)
