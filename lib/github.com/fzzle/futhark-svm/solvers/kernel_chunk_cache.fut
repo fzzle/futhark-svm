@@ -1,7 +1,7 @@
 import "../../../diku-dk/sorts/radix_sort"
 import "../util"
 import "../kernels"
-import "../cache"
+-- import "../cache"
 
 let ws = 1024i32
 let tau = 1e-6f32
@@ -148,7 +148,7 @@ local let find_rho [n] (A: [n]f32) (F: [n]f32)
 let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     (p: parameters) (Cp: f32) (Cn: f32)
     (eps: f32) (max_iter: i32) =
-  let max_outer_iter = -1
+  let max_outer_iter = 100
   let max_inner_iter = 100 * ws
   -- let max_iter
   let P = map (>0) Y
@@ -158,49 +158,26 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
   let d = {p=2f32, pp=f32.inf, swap=0i32, same=0i32}
   let (F, A) = init_step X D P Y Cp Cn p
 
-  -- let cache = {p: , pp:}
+  -- Cache
   let pK = replicate ws (replicate n 0)
-  -- let pp = replicate ws (replicate n 0)
   let prev_I_ws = replicate ws (-1)
   let cache = {p=pK, pp=pK, pi=prev_I_ws, ppi=prev_I_ws}
 
   let (_, i, j, d, F, A, _) = loop (c, i, j, d, F, A, cache) while c do
     let I_ws = working_set P F A Cp Cn
 
-    -- basically an lru
-    -- let cache_idxs = map (\i ->
-    --   loop idx = -1 for j < length cache.ppi do
-    --     if i == cache.ppi[j] then j else idx) I_ws
-
-    -- in (reduce_comm op (false, -1) (zip (map p as) (iota n))).1
-    -- let ppi = cache.ppi
-    -- let to_search = zip ppi (indices ppi)
-
-    -- For some reason it crashes without the only_inta attribute.
-    -- Obviously, we then have to ensure that the working set can
-    -- fit on the device to use this reliably.
-    -- let (K_ws, cache') =
-      -- if cache.cold>0 then
-      --   let X_ws = gather X I_ws
-      --   let K_ws = kernel_matrix p X X_ws
-      --   let p = transpose K_ws
-      --   let cache' = {p, pp=cache.p, pi=I_ws, ppi=cache.pi}
-      --   in (K_ws, cache')
-      -- else
-    -- use scan?
-    -- scan (\(x, t) (y, b) -> if x > y then (x, false) else  )
-
+    -- Cache start
     let find_unique (e: i32) (xs: [ws]i32): i32 =
       let is = map2 (\x i -> if x == e then i else -1) xs (iota ws)
       in i32.maximum is
     -- Find the indices of the working set rows in the cache.
-    let I_c = #[incremental_flattening(only_intra)]
+    let I_c = --#[incremental_flattening(only_intra)]
       map (\i -> find_unique i cache.ppi) I_ws
     -- Boolean vector w/ true if miss.
     let B_m = map (==(-1)) I_c
     -- I_h: Hit indices, I_m: Miss indices.
     let (I_m, I_h) = partition (\i -> B_m[i]) (indices I_ws)
-    -- TODO: Use cached rows .p to compute 1000 ws colums less.
+    -- TODO: Use cached rows .p, computing 1024 ws colums less.
     -- Partition in working_set and save indices not in ws.
     -- map (\i -> ) cache.pi
     -- Compute kernel rows not found in the cache.
@@ -211,11 +188,12 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     let I_m = map (\i -> i - 1) (scan (+) 0 (map i32.bool B_m))
     -- Assemble the rows.
     let K_ws_t = map3 (\b_m i_m i_c ->
-      if b_m then K_ws_m[i_m] else cache.pp[i_c] :> [n]f32) B_m I_m I_c
+      if b_m then K_ws_m[i_m] else (cache.pp[i_c] :> [n]f32)) B_m I_m I_c
 
     let K_ws = transpose K_ws_t
-
     let cache' = {p=K_ws_t, pp=cache.p, pi=I_ws, ppi=cache.pi}
+    -- Cache end
+
 
     -- Gather ws data.
     let D_ws = gather D I_ws
