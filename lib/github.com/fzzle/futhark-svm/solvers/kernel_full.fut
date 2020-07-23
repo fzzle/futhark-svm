@@ -65,8 +65,7 @@ local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
   let d_l = (a_l - A[l]) * y_l
   -- Update optimality indicators.
   let F' = map3 (\f k_u k_l ->
-    -- f + d_u * k_u + d_l * k_l
-    f32.mad d_u k_u (f32.mad d_l k_l f)) F K_u K[l]
+    f + d_u * k_u + d_l * k_l) F K_u K[l]
   -- Write back updated alphas.
   let A' = map2 (\a i ->
     if i == u then a_u else if i == l then a_l else a) A (iota n)

@@ -37,3 +37,6 @@ let bincount [n] (k: i32) (vs: [n]i32): [k]i32 =
   let bins = replicate k 0
   let ones = replicate n 1
   in reduce_by_index bins (+) 0 vs ones
+
+let is_even (x: i32): bool =
+  bool.i32 (x & 1)

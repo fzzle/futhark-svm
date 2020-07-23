@@ -1,6 +1,7 @@
 import "../../../diku-dk/sorts/radix_sort"
 import "../util"
 import "../kernels"
+import "../cache"
 
 let ws = 1024i32
 let tau = 1e-6f32
@@ -79,8 +80,9 @@ local let solve_step [n] (K: [n][n]f32) (D: [n]f32)
     if i == u then a_u else if i == l then a_l else a) A (iota n)
   in (true, d, F', A')
 
+-- | Assumes that ws < n
 local let working_set [n] (P: [n]bool) (F: [n]f32)
-    (A: [n]f32) (Cp: f32) (Cn: f32) =
+    (A: [n]f32) (Cp: f32) (Cn: f32): *[ws]i32 =
   -- Get indices of sorted optimality indicators F.
   let sort_by_fst = radix_sort_float_by_key
     (.0) f32.num_bits f32.get_bit
@@ -91,19 +93,32 @@ local let working_set [n] (P: [n]bool) (F: [n]f32)
   let is_lower p a = (p && a > 0) || (!p && a < Cn)
   let B_ul = map2 (\p a -> (is_upper p a, is_lower p a)) P A
   let (B_u, B_l) = unzip (map (\i -> B_ul[i]) I)
-  let S_u = scan (+) 0 (map i32.bool B_u)
-  let S_l = scan (+) 0 (map i32.bool B_l)
+  let T_u = scan (+) 0 (map i32.bool B_u)
   -- n_u: Spaces allotted to upper.
-  let n_u = i32.min (last S_u) (ws / 2)
+  let n_u = i32.min (last T_u) (ws / 2)
+  -- n_avail -= n_u
+  let S_u = map2 (\b_u t_u -> b_u && t_u <= n_u) B_u T_u
+  let B_l' = map2 (\b_l' s_u -> b_l' && !s_u) B_l S_u
+  let T_l' = scan (+) 0 (map i32.bool B_l')
   -- ws - n_u: Spaces left. n_l: n lower to discard.
-  let n_l = (last S_l) - (ws - n_u)
-  let n_u = n_u - i32.min n_l 0
-  -- Flag elements to choose.
-  let S = map4 (\b_u s_u b_l s_l ->
-    (b_u && s_u <= n_u) || (b_l && s_l > n_l)) B_u S_u B_l S_l
+  let n_l = last T_l' - (ws - n_u)
+  let S_l = map2 (\b_l' t_l' -> b_l' && t_l' > n_l) B_l' T_l'
+  let S = map2 (||) S_u S_l
+  -- Check if the working set has been filled. If there are still
+  -- open slots we fill them with available samples from upper.
+  let n_open = ws - (n_u + last T_l')
+  let S = if n_open > 0 then
+    -- Fill remaining slots with upper samples.
+    let B_u' = map2 (\b_u s -> b_u && !s) S_u S
+    let T_u' = scan (+) 0 (map i32.bool B_u')
+    let S_u' = map2 (\b_u' t_u' -> b_u' && t_u' >= n_open) B_u' T_u'
+    in map2 (||) S S_u'
+    else S
   -- Put back at original indices.
+  -- in (unzip (filter (.0) (zip S I))).1 :> *[ws]i32
   let S' = scatter (replicate n false) I S
-  in filter (\i -> S'[i]) (iota n)
+  -- partition for cache?
+  in filter (\i -> S'[i]) (iota n) :> *[ws]i32
 
 -- | Finds the objective value.
 local let find_obj [n] (A: [n]f32) (F: [n]f32) (Y: [n]f32): f32 =
@@ -133,7 +148,7 @@ local let find_rho [n] (A: [n]f32) (F: [n]f32)
 let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     (p: parameters) (Cp: f32) (Cn: f32)
     (eps: f32) (max_iter: i32) =
-  let max_outer_iter = 100
+  let max_outer_iter = -1
   let max_inner_iter = 100 * ws
   -- let max_iter
   let P = map (>0) Y
@@ -142,15 +157,73 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
   let (c, i, j) = (true, 0i32, 1i32)
   let d = {p=2f32, pp=f32.inf, swap=0i32, same=0i32}
   let (F, A) = init_step X D P Y Cp Cn p
-  let (_, i, j, d, F, A) = loop (c, i, j, d, F, A) while c do
+
+  -- let cache = {p: , pp:}
+  let pK = replicate ws (replicate n 0)
+  -- let pp = replicate ws (replicate n 0)
+  let prev_I_ws = replicate ws (-1)
+  let cache = {p=pK, pp=pK, pi=prev_I_ws, ppi=prev_I_ws}
+
+  let (_, i, j, d, F, A, _) = loop (c, i, j, d, F, A, cache) while c do
     let I_ws = working_set P F A Cp Cn
+
+    -- basically an lru
+    -- let cache_idxs = map (\i ->
+    --   loop idx = -1 for j < length cache.ppi do
+    --     if i == cache.ppi[j] then j else idx) I_ws
+
+    -- in (reduce_comm op (false, -1) (zip (map p as) (iota n))).1
+    -- let ppi = cache.ppi
+    -- let to_search = zip ppi (indices ppi)
+
+    -- For some reason it crashes without the only_inta attribute.
+    -- Obviously, we then have to ensure that the working set can
+    -- fit on the device to use this reliably.
+    -- let (K_ws, cache') =
+      -- if cache.cold>0 then
+      --   let X_ws = gather X I_ws
+      --   let K_ws = kernel_matrix p X X_ws
+      --   let p = transpose K_ws
+      --   let cache' = {p, pp=cache.p, pi=I_ws, ppi=cache.pi}
+      --   in (K_ws, cache')
+      -- else
+    -- use scan?
+    -- scan (\(x, t) (y, b) -> if x > y then (x, false) else  )
+
+    let find_unique (e: i32) (xs: [ws]i32): i32 =
+      let is = map2 (\x i -> if x == e then i else -1) xs (iota ws)
+      in i32.maximum is
+    -- Find the indices of the working set rows in the cache.
+    let I_c = #[incremental_flattening(only_intra)]
+      map (\i -> find_unique i cache.ppi) I_ws
+    -- Boolean vector w/ true if miss.
+    let B_m = map (==(-1)) I_c
+    -- I_h: Hit indices, I_m: Miss indices.
+    let (I_m, I_h) = partition (\i -> B_m[i]) (indices I_ws)
+    -- TODO: Use cached rows .p to compute 1000 ws colums less.
+    -- Partition in working_set and save indices not in ws.
+    -- map (\i -> ) cache.pi
+    -- Compute kernel rows not found in the cache.
+    let I_ws_m = gather I_ws I_m
+    let X_ws_m = gather X I_ws_m
+    let K_ws_m = kernel_matrix p X_ws_m X
+    -- Find indices of computed rows to put them back.
+    let I_m = map (\i -> i - 1) (scan (+) 0 (map i32.bool B_m))
+    -- Assemble the rows.
+    let K_ws_t = map3 (\b_m i_m i_c ->
+      if b_m then K_ws_m[i_m] else cache.pp[i_c] :> [n]f32) B_m I_m I_c
+
+    let K_ws = transpose K_ws_t
+
+    let cache' = {p=K_ws_t, pp=cache.p, pi=I_ws, ppi=cache.pi}
+
     -- Gather ws data.
     let D_ws = gather D I_ws
     let Y_ws = gather Y I_ws
     let P_ws = map (>0) Y_ws
     -- Get full kernel rows for ws.
-    let X_ws = gather X I_ws
-    let K_ws = kernel_matrix p X X_ws
+    -- let X_ws = gather X I_ws
+    -- let K_ws = kernel_matrix p X X_ws
     let K_wsx2 = gather K_ws I_ws
     let solve_step' = solve_step K_wsx2 D_ws P_ws Y_ws
     -- F, A
@@ -165,7 +238,7 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     let stop = !b0 || same >= 10 || swap >= 10
     -- Update difference infos.
     let d' = {p=d0, pp=d.p, same, swap}
-    in if stop then (false, i, j, d', F, A) else
+    in if stop then (false, i, j, d', F, A, cache') else
     let eps_ws = f32.max eps (d0 * 0.1)
     -- Solve the working set problem
     let (c1, k) = (true, 1)
@@ -177,7 +250,7 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
     let F' = map2 (\f K_i -> f + f32.sum (map2 (*) d_ws K_i)) F K_ws
     let A' = scatter A I_ws A_ws'
     -- bare true og så i != max_outer i stedet for while c?
-    in (i != max_outer_iter, i + 1, j + k, d', F', A')
+    in (i != max_outer_iter, i + 1, j + k, d', F', A', cache')
   let o = find_obj A F Y
   let r = find_rho A F P Cp Cn d.p
   -- Multiply y on alphas for prediction.

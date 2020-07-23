@@ -4,17 +4,29 @@ type kernel =
   | #polynomial
   | #sigmoid
 
+-- Sum type?
 type parameters =
   { kernel: kernel
   , gamma: f32
   , coef0: f32
   , degree: f32 }
 
--- Vector dot product.
+
+-- module type _kernel = {
+
+--   val prepare: ->
+
+--   val f: i32 ->
+
+
+-- }
+
+
+-- | Vector dot product.
 local let dot [n] (u: [n]f32) (v: [n]f32): f32 =
   f32.sum (map2 (*) u v)
 
--- Squared euclidean distance.
+-- | Squared euclidean distance.
 local let sqdist [n] (u: [n]f32) (v: [n]f32): f32 =
   f32.sum (map (\x -> x * x) (map2 (-) u v))
 
@@ -45,19 +57,19 @@ let kernel_row [n][m] (p: parameters)
     (X: [n][m]f32) (u: [m]f32): [n]f32 =
   map (kernel_value p u) X
 
--- Get kernel matrix for a dataset. K[i, j] corresponds to the
+-- | Get kernel matrix for a dataset. K[i, j] corresponds to the
 -- kernel value computed between samples x_i and x_j.
 let kernel_matrix [n][m][o] (p: parameters)
     (X0: [n][m]f32) (X1: [o][m]f32): [n][o]f32 =
   map (kernel_row p X1) X0
 
--- Get the diagonal of a full kernel matrix.
+-- | Get the diagonal of a full kernel matrix.
 let kernel_diag [n] (p: parameters) (K: [n][n]f32): [n]f32 =
   match p.kernel
   case #rbf -> replicate n 1
   case _    -> map (\i -> K[i, i]) (iota n)
 
--- Compute the diagonal of a kernel matrix.
+-- | Compute the diagonal of a kernel matrix.
 let compute_kernel_diag [n][m] (p: parameters)
     (X: [n][m]f32): [n]f32 =
   match p.kernel

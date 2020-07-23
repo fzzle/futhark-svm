@@ -3,14 +3,13 @@ from pathlib import Path
 import numpy as np
 import sys
 import os
+import time
 
 sys.path.append(os.path.join(os.path.dirname(sys.path[0]), 'bin'))
 
 import _main
 
-fsvm = Futhark(_main)
-
-#fsvm.lib.futhark_context_config_add_build_option(fsvm.conf, b'-cl-fast-relaxed-math')
+fsvm = Futhark(_main, profiling=False)
 
 kernels = {
   'rbf': 0,
@@ -20,9 +19,13 @@ kernels = {
 }
 
 class SVC():
-  def __init__(self, kernel='rbf', C=10, gamma=0.1,
+  # TODO: Inherit from sklearn.BaseEstimator
+  def __init__(self, kernel='rbf', C=10., gamma=0.1,
       coef0=0, degree=3, eps=0.001, max_iter=100000000,
       verbose=False):
+    """
+    ke
+    """
     if kernel not in kernels:
       raise Exception()
     self.kernel = kernels.get(kernel)
@@ -36,17 +39,17 @@ class SVC():
     self.trained = False
 
   def fit(self, X, y):
-    if self.trained:
-      raise Exception('Already trained')
-    # X = X.astype(np.float32)
-    # y = y.astype(np.uint8)
-    # res = fsvm.fit_gridsearch(X, y, self.kernel, np.array([self.C]),
+    ""
+
+    # res = fsvm.fit_gridsearch(X, y, self.kernel, np.array([self.C, 1, 100]),
     #   self.gamma, self.coef0, self.degree,
     #   self.eps, self.max_iter)
+
+
     res = fsvm.fit(X, y, self.kernel, self.C,
       self.gamma, self.coef0, self.degree,
       self.eps, self.max_iter)
-    (A, I, S, flags, rhos, obj, iter, t) = res
+    A, I, S, sizes, rhos, obj, iter, t = res
     if self.verbose:
       _rhos = fsvm.from_futhark(rhos)
       obj  = fsvm.from_futhark(obj)
@@ -54,24 +57,34 @@ class SVC():
       print('total iterations:', np.sum(iter))
       print('rhos:\n', _rhos)
       print('objective values:\n', obj)
+      print('avg. obj.:\n', np.mean(obj))
       print('iterations:\n', iter)
-    self.__support_vectors = S
-    self.__sv_indices = I
-    self.__alphas = A
-    self.__flags = flags
-    self.__rhos = rhos
+      print('nSV:', len(fsvm.from_futhark(S)))
+    print(np.min(np.abs(fsvm.from_futhark(A))))
+    self.__S = S # support_vectors_
+    self.__I = I # support_
+    self.__A = A # coef_
+    self.__sizes = sizes
+    self.__rhos = rhos         # intercept_
     self.__n_classes = t
     self.trained = True
+
+    f = open('profile.txt', 'w+')
+    errptr = fsvm.lib.futhark_context_report(fsvm.ctx)
+    errstr = fsvm.ffi.string(errptr).decode()
+    fsvm.lib.free(errptr)
+    f.write(errstr)
+    f.close()
 
   def predict(self, X, ws=64):
     if not self.trained:
       raise Exception('Not trained')
     p = fsvm.predict(X,
-      self.__support_vectors,
-      self.__alphas,
-      self.__sv_indices,
+      self.__S,
+      self.__A,
+      self.__I,
       self.__rhos,
-      self.__flags,
+      self.__sizes,
       self.__n_classes,
       self.kernel,
       self.gamma,
@@ -81,3 +94,7 @@ class SVC():
     )
     return fsvm.from_futhark(p)
 
+  @property
+  def support_vectors_(self):
+    # TODO: Find exact format in sklearn
+    return fsvm.from_futhark(self.__S)
