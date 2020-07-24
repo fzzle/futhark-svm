@@ -9,7 +9,8 @@ sys.path.append(os.path.join(os.path.dirname(sys.path[0]), 'bin'))
 
 import _main
 
-fsvm = Futhark(_main, profiling=False)
+profiling = False
+fsvm = Futhark(_main)
 
 kernels = {
   'rbf': 0,
@@ -54,13 +55,13 @@ class SVC():
       _rhos = fsvm.from_futhark(rhos)
       obj  = fsvm.from_futhark(obj)
       iter = fsvm.from_futhark(iter)
+      n_sv = len(fsvm.from_futhark(S))
+      print('nSV:', n_sv)
+      print('avg. obj.:', np.mean(obj))
       print('total iterations:', np.sum(iter))
-      print('rhos:\n', _rhos)
       print('objective values:\n', obj)
-      print('avg. obj.:\n', np.mean(obj))
+      print('rhos:\n', _rhos)
       print('iterations:\n', iter)
-      print('nSV:', len(fsvm.from_futhark(S)))
-    print(np.min(np.abs(fsvm.from_futhark(A))))
     self.__S = S # support_vectors_
     self.__I = I # support_
     self.__A = A # coef_
@@ -69,12 +70,13 @@ class SVC():
     self.__n_classes = t
     self.trained = True
 
-    f = open('profile.txt', 'w+')
-    errptr = fsvm.lib.futhark_context_report(fsvm.ctx)
-    errstr = fsvm.ffi.string(errptr).decode()
-    fsvm.lib.free(errptr)
-    f.write(errstr)
-    f.close()
+    if profiling:
+      f = open('profile.txt', 'w+')
+      errptr = fsvm.lib.futhark_context_report(fsvm.ctx)
+      errstr = fsvm.ffi.string(errptr).decode()
+      fsvm.lib.free(errptr)
+      f.write(errstr)
+      f.close()
 
   def predict(self, X, ws=64):
     if not self.trained:

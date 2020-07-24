@@ -1,15 +1,17 @@
-SRC_PATH=lib/github.com/fzzle/futhark-svm
+FSVM_PATH=lib/github.com/fzzle/futhark-svm
 
 clean:
 	find bin/ -type f -delete
 	find bench/* ! -name '*.fut' -delete
 	find tests/* ! -name '*.fut' -delete
 
-build:
-	futhark opencl --library $(SRC_PATH)/main.fut -o bin/main
-	cd bin; build_futhark_ffi main
+setup:
+	futhark pkg sync
 
-# bench:
+build:
+	mkdir -p bin
+	futhark opencl --library $(FSVM_PATH)/main.fut -o bin/main
+	cd bin; build_futhark_ffi main
 
 test:
 	futhark test --backend=opencl tests/util_tests.fut
