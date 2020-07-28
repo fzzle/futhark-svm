@@ -3,20 +3,19 @@ import "util"
 import "kernels"
 import "solvers/kernel_chunk_cache"
 
-
 -- Requires y to be 0, 1, 2...
-entry fit [n][m] (X: [n][m]f32) (Y: [n]u8) (k_id: i32)
+entry fit [n][m] (X: [n][m]f32) (Y: [n]i32) (k_id: i32)
     (C: f32) (gamma: f32) (coef0: f32) (degree: f32)
     (eps: f32) (max_iter: i32) =
   let kernel = kernel_from_id k_id
   let p = {kernel, gamma, coef0, degree}
   -- t: Number of classes.
-  let t = 1 + i32.u8 (u8.maximum Y)
-  let counts = bincount t (map i32.u8 Y)
+  let t = 1 + i32.maximum Y
+  let counts = bincount t Y
   let starts = exclusive_scan (+) 0 counts
   let out = replicate (t*(t-1)/2) (0, 0, 0, 0)
-  -- Sort samples by class
-  let sort_by_fst = radix_sort_by_key (.0) u8.num_bits u8.get_bit
+  -- Sort samples by class (no negative classes allowed).
+  let sort_by_fst = radix_sort_by_key (.0) i32.num_bits i32.get_bit
   let X = map (.1) (sort_by_fst (zip Y X))
   -- TODO: Weights, Cp / Cn
   -- WC = map2 (*) C W
