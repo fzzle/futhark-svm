@@ -112,7 +112,6 @@ module sigmoid (F: float): kernel = default F {
 -- | The rbf kernel with simple squared distance calculated by:
 -- K(u, v) = \exp(-\gamma * ||u - v||²)
 --         = \exp(-\gamma * (\sum (u_i - v_i)²))
- = \sum (u_i - v_i) * (u_i - v_i).
 module rbf_simple (F: float): kernel = {
   module T = kernel_util F
 
