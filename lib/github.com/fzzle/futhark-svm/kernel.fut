@@ -50,7 +50,9 @@ module kernel_util (F: float) = {
     map (\u -> map (k u) X1) X0
 }
 
--- | The default kernel computation setup.
+-- | Parametric module which makes it possible to implement a new
+-- kernel type only by providing the kernel function and the model
+-- parameters of the function.
 module default (F: float) (K: kernel_function with t = F.t) = {
   module T = kernel_util F
 
@@ -65,7 +67,8 @@ module default (F: float) (K: kernel_function with t = F.t) = {
   let matrix (p: s) = T.matrix (value p)
 }
 
--- | The linear kernel: K(u, v) = <u, v>
+-- | The linear kernel:
+-- K(u, v) = <u, v>
 module linear (F: float): kernel = default F {
   module T = kernel_util F
 
@@ -76,7 +79,7 @@ module linear (F: float): kernel = default F {
 }
 
 -- | The polynomial kernel:
---   K(u, v) = (\gamma * <u, v> * coef0) ** degree
+-- K(u, v) = (\gamma * <u, v> + c) ** degree
 module polynomial (F: float): kernel = default F {
   module T = kernel_util F
 
@@ -91,6 +94,8 @@ module polynomial (F: float): kernel = default F {
     F.((p.gamma * T.dot u v + p.coef0) ** p.degree)
 }
 
+-- | The sigmoid kernel:
+-- K(u, v) = tanh (\gamma * <u, v> + c)
 module sigmoid (F: float): kernel = default F {
   module T = kernel_util F
 
@@ -105,7 +110,9 @@ module sigmoid (F: float): kernel = default F {
 }
 
 -- | The rbf kernel with simple squared distance calculated by:
---   K(u, v) = ||u - v||² = \sum (u_i - v_i) * (u_i - v_i).
+-- K(u, v) = \exp(-\gamma * ||u - v||²)
+--         = \exp(-\gamma * (\sum (u_i - v_i)²))
+ = \sum (u_i - v_i) * (u_i - v_i).
 module rbf_simple (F: float): kernel = {
   module T = kernel_util F
 
@@ -128,8 +135,9 @@ module rbf_simple (F: float): kernel = {
   let matrix (p: s) = T.matrix (value p)
 }
 
--- | The rbf kernel with squared distance calculated by:
---   K(u, v) = ||u - v||² = <u, u> + <v, v> - 2 * <u, v>
+-- | The rbf kernel where the matrix and row operations use
+-- <u, u> + <v, v> - 2 * <u, v> to find the squared distance:
+-- K(u, v) = \exp(-\gamma * (<u, u> + <v, v> - 2 * <u, v>))
 module rbf (F: float): kernel = {
   module T = kernel_util F
 
