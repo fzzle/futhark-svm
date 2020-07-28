@@ -131,3 +131,21 @@ module polynomial (F: float): kernel = {
   let row    (p: s) = T.row    (value p)
   let matrix (p: s) = T.matrix (value p)
 }
+
+module sigmoid (F: float): kernel = {
+  module T = default F
+
+  type t = F.t
+  type s = {
+    gamma: t,
+    coef0: t
+  }
+
+  let value [n] (p: s) (u: [n]t) (v: [n]t): t =
+    F.(tanh (p.gamma * T.dot u v + p.coef0))
+
+  let extdiag _     = T.extdiag
+  let diag   (p: s) = T.diag   (value p)
+  let row    (p: s) = T.row    (value p)
+  let matrix (p: s) = T.matrix (value p)
+}
