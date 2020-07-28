@@ -73,6 +73,7 @@ module rbf_simple (F: float): kernel = {
   let value [n] ({gamma}: s) (u: [n]t) (v: [n]t): t =
     F.exp (F.negate gamma F.* T.sqdist u v)
 
+  -- rbf diagonals are always 1's.
   let extdiag [n] (_: s) (_: [n][n]t): *[n]t =
     replicate n (F.i32 1)
 
@@ -102,12 +103,31 @@ module rbf (F: float): kernel = {
   let diag [n][m] (_: s) (_: [n][m]t): *[n]t =
     replicate n (F.i32 1)
 
-  let row [n][m] ({gamma}: s) (X0: [n][m]t)
-      (u: [m]t) (D0: [n]t) (d_u: t): *[n]t =
+  let row [n][m] ({gamma}: s) (X: [n][m]t)
+      (u: [m]t) (D: [n]t) (d_u: t): *[n]t =
     let k x = F.exp (F.negate gamma F.* x)
-    in map2 (\v d_v -> k F.(d_u + d_v - i32 2 * T.dot u v)) X0 D0
+    in map2 (\v d_v -> k F.(d_u + d_v - i32 2 * T.dot u v)) X D
 
   let matrix [n][m][o] (p: s) (X0: [n][m]t)
       (X1: [o][m]t) (D0: [n]t) (D1: [o]t): *[n][o]t =
-    replicate n (replicate o (F.i32 0))
+    map2 (\u d_u -> row p X1 u D1 d_u) X0 D0
+}
+
+module polynomial (F: float): kernel = {
+  module T = default F
+
+  type t = F.t
+  type s = {
+    gamma: t,
+    coef0: t,
+    degree: t
+  }
+
+  let value [n] (p: s) (u: [n]t) (v: [n]t): t =
+    F.((p.gamma * T.dot u v + p.coef0) ** p.degree)
+
+  let extdiag _     = T.extdiag
+  let diag   (p: s) = T.diag   (value p)
+  let row    (p: s) = T.row    (value p)
+  let matrix (p: s) = T.matrix (value p)
 }
