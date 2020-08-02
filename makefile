@@ -8,11 +8,11 @@ clean:
 setup:
 	futhark pkg sync
 
-build:
+build: # Build for use w/ Python.
 	mkdir -p bin
 	futhark opencl --library $(FSVM_PATH)/main.fut -o bin/main
 	cd bin; build_futhark_ffi main
 
 test:
-	futhark test --backend=opencl tests/util_tests.fut
+	futhark test --backend=opencl tests/
 	find tests/* ! -name '*.fut' -delete
