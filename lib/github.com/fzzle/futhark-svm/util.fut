@@ -23,8 +23,9 @@ let segmented_replicate 't [n] (ns: [n]i32) (vs: [n]t): []t =
 let segmented_replicate_to 't [n] (k: i32) (ns: [n]i32) (vs: [n]t): [k]t =
   segmented_replicate ns vs :> [k]t
 
-let gather [n][m] 't (xs: [n]t) (is: [m]i32): *[m]t =
-  map (\i -> xs[i]) is
+-- | Produces vs[i] for every i in is.
+let gather [n][m] 't (vs: [n]t) (is: [m]i32): *[m]t =
+  map (\i -> vs[i]) is
 
 -- | Exclusive prefix scan.
 let exclusive_scan [n] 't (op: t -> t -> t) (ne: t) (vs: [n]t) =
@@ -38,5 +39,8 @@ let bincount [n] (k: i32) (vs: [n]i32): [k]i32 =
   let ones = replicate n 1
   in reduce_by_index bins (+) 0 vs ones
 
-let is_even (x: i32): bool =
-  bool.i32 (x & 1)
+-- | Get index of an element in vs which contains the element at
+-- most once. Returns -1 if not found.
+let find_unique [n] (e: i32) (vs: [n]i32): i32 =
+  let is = map2 (\v i -> if v == e then i else -1) vs (iota n)
+  in i32.maximum is

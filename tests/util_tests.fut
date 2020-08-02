@@ -20,8 +20,6 @@ import "../lib/github.com/fzzle/futhark-svm/util"
 entry test_triu (n: i32) =
   unzip (triu n)
 
--- TODO: Test triu up against loop.
-
 -- ==
 -- entry: test_segmented_replicate
 -- input { [3] [0] } output { [0, 0, 0] }
