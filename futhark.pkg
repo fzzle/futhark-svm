@@ -1,7 +1,7 @@
 package github.com/fzzle/futhark-svm
 
 require {
-  github.com/diku-dk/segmented 0.3.0 #cc42eee5512f0816fa8a3acfe5cfa082adb8fe2d
-  github.com/diku-dk/sorts 0.3.13 #ec27f7fa112a63ee33b2ce93c893215596f252a8
+  github.com/diku-dk/segmented 0.3.1 #f128a9716093038694e7d4be63b351d700c84f68
+  github.com/diku-dk/sorts 0.3.14 #7ae67e27d6235a5b67c23b02dc676538b29c9746
   github.com/diku-dk/cpprandom 1.2.1 #869304710af3a023683d6670316d55dafd973c71
 }
