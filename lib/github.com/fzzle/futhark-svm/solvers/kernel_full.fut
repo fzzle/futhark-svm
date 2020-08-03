@@ -3,7 +3,7 @@ import "../kernels"
 
 -- | The initial step is slightly simpler to solve. Doesn't provide a
 -- huge boost here, but it does improve the chunk-based solver.
-local let init [n] (K: [n][n]f32) (D: [n]f32) (P: [n]bool)
+local let init_step [n] (K: [n][n]f32) (D: [n]f32) (P: [n]bool)
     (Y: [n]f32) (Cp: f32) (Cn: f32): ([n]f32, [n]f32) =
   let K_u = K[0]
   let V_l_I = map4 (\p d k_u i ->
@@ -96,7 +96,7 @@ let solve [n][m] (X: [n][m]f32) (Y: [n]f32)
   let D = kernel_diag p K
   let P = map (>0) Y
   -- Initialize A & F.
-  let (F, A) = init K D P Y Cp Cn
+  let (F, A) = init_step K D P Y Cp Cn
   let (_, i, d, F, A) =
     loop (c, i, _, F, A) = (true, 1, 0, F, A) while c do
       let (b, d, F', A') = solve_step K D P Y F A Cp Cn eps
