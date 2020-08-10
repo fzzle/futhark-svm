@@ -1,4 +1,4 @@
-import "../../../diku-dk/sorts/radix_sort"
+import "../../diku-dk/sorts/radix_sort"
 
 import "util"
 import "sets"

@@ -1,5 +1,5 @@
-import "v2/svm"
-import "v2/model"
+import "svm"
+import "types"
 
 module svm = fsvm f32
 module svc = svm.svc

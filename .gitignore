@@ -1,11 +1,10 @@
+lib/github.com/*
+!lib/github.com/fzzle/
+
 scripts/
 bench/
 data/
 bin/
-
-lib/*/*
-!lib/*/fzzle/
-lib/github.com/fzzle/futhark-svm/data
 
 out
 .vscode
