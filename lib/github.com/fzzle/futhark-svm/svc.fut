@@ -11,7 +11,6 @@ module svc (R: float) (S: kernel with t = R.t) = {
   -- | Train a model on X/Y.
   let fit [n][m] (X: [n][m]t) (Y: [n]i32) (C: t)
       (m_p: m_t) (k_p: s): output t [m] =
-    #[unsafe]
     -- Number of distinct classes.
     let n_c = 1 + i32.maximum Y
     let counts = bincount n_c Y
