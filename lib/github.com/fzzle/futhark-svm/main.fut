@@ -26,11 +26,11 @@ entry svc_fit [n][m] (X: [n][m]f32) (Y: [n]i32)
 
 -- | Entrypoint for SVC predict.
 entry svc_predict [n][m][o][p][q] (X: [n][m]f32)
-    (k_id: i32) (n_ws: i32) (A: [o]f32) (I: [o]i32)
-    (S: [p][m]f32) (R: [q]f32) (Z: [q]i32) (n_c: i32)
+    (k_id: i32) (A: [o]f32) (I: [o]i32) (S: [p][m]f32)
+    (Z: [q]i32) (R: [q]f32) (n_c: i32) (n_ws: i32)
     (gamma: f32) (coef0: f32) (degree: f32): [n]i32 =
   let p_p = {n_ws}
-  let m_w = {A, I, S, R, Z, n_c} in
+  let m_w = {A, I, S, Z, R, n_c} in
     match k_id
     case 0 -> k0.predict X m_w p_p {}
     case 1 -> k1.predict X m_w p_p {gamma, coef0}
