@@ -72,7 +72,7 @@ module svc (R: float) (S: kernel with t = R.t) = {
     let F = segmented_replicate_to o Z (iota q)
     let (Y, i) = ([], 0)
     let (Y, _) = loop (Y, i) while i < n do
-      let to = i32.min n (i + 64)
+      let to = i32.min n (i + n_ws)
       let D_l_X = L.diag {} X[i:to]
       let K = S.matrix k_p X[i:to] S_ D_l_X D_l_S
       let Y_i = map (\K_i ->
@@ -86,6 +86,6 @@ module svc (R: float) (S: kernel with t = R.t) = {
         let max_by_fst a b = if a.0 > b.0 then a else b
         let v_c = reduce max_by_fst (0, -1) (zip votes (iota n_c))
         in v_c.1) K
-      in (Y ++ Y_i, i + 64)
+      in (Y ++ Y_i, i + n_ws)
     in Y:> [n]i32
 }
