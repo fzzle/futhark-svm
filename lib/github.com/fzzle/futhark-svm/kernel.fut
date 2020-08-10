@@ -20,17 +20,17 @@ module type kernel = {
 }
 
 -- | Kernel utilities.
-module kernel_util (F: float) = {
-  type t = F.t
+module kernel_util (R: real) = {
+  type t = R.t
   -- | Value function type.
   type^ f [n] = [n]t -> [n]t -> t
   -- | Squared euclidean distance.
   let sqdist [n] (u: [n]t) (v: [n]t): t =
-    F.(sum (map (\x -> x * x) (map2 (-) u v)))
+    R.(sum (map (\x -> x * x) (map2 (-) u v)))
 
   -- | Vector dot product.
   let dot [n] (u: [n]t) (v: [n]t): t =
-    F.sum (map2 (F.*) u v)
+    R.(sum (map2 (*) u v))
 
   -- | Extract the diagonal of a symmetric kernel matrix.
   let extdiag [n] (K: [n][n]t): *[n]t =
@@ -42,48 +42,68 @@ module kernel_util (F: float) = {
 
   -- | Compute a full kernel matrix row.
   let row [n][m] (k: f [m]) (X: [n][m]t)
-      (v: [m]t) (_: [n]t) (_: t): *[n]t =
-    map (\u -> k u v) X
+      (u: [m]t) (_: [n]t) (_: t): *[n]t =
+    map (\v -> k u v) X
 
   let matrix [n][m][o] (k: f [m]) (X0: [n][m]t)
       (X1: [o][m]t) (_: [n]t) (_: [o]t): *[n][o]t =
-    map (\u -> map (k u) X1) X0
+    map (\u -> map (\v -> k u v) X1) X0
 }
 
 -- | Parametric module which makes it possible to implement a new
 -- kernel type only by providing the kernel function and the model
 -- parameters of the function.
-module default (F: float) (K: kernel_function with t = F.t) = {
-  module T = kernel_util F
+module default (R: real) (T: kernel_function with t = R.t) = {
+  module util = kernel_util R
 
-  type t = K.t
-  type s = K.s
+  type t = T.t
+  type s = T.s
 
-  let value = K.value
-
-  let extdiag _     = T.extdiag
-  let diag   (p: s) = T.diag   (value p)
-  let row    (p: s) = T.row    (value p)
-  let matrix (p: s) = T.matrix (value p)
+  let value = T.value
+  let extdiag _     = util.extdiag
+  let diag   (p: s) = util.diag   (value p)
+  let row    (p: s) = util.row    (value p)
+  let matrix (p: s) = util.matrix (value p)
 }
 
 -- | The linear kernel:
 -- K(u, v) = <u, v>
-module linear (F: float): kernel = default F {
-  module T = kernel_util F
+module linear (R: real): kernel
+    with t = R.t
+    with s = {} = default R {
+  module util = kernel_util R
 
-  type t = F.t
-  type s = ()
+  type t = R.t
+  type s = {}
 
-  let value _ = T.dot
+  let value _ = util.dot
+}
+
+-- | The sigmoid kernel:
+-- K(u, v) = tanh (\gamma * <u, v> + c)
+module sigmoid (R: real): kernel
+    with t = R.t
+    with s = {gamma: R.t, coef0: R.t} = default R {
+  module util = kernel_util R
+
+  type t = R.t
+  type s = {
+    gamma: t,
+    coef0: t
+  }
+
+  let value [n] (p: s) (u: [n]t) (v: [n]t): t =
+    R.(tanh (p.gamma * util.dot u v + p.coef0))
 }
 
 -- | The polynomial kernel:
 -- K(u, v) = (\gamma * <u, v> + c) ** degree
-module polynomial (F: float): kernel = default F {
-  module T = kernel_util F
+module polynomial (R: real): kernel
+    with t = R.t
+    with s = {gamma: R.t, coef0: R.t, degree: R.t} = default R {
+  module util = kernel_util R
 
-  type t = F.t
+  type t = R.t
   type s = {
     gamma: t,
     coef0: t,
@@ -91,75 +111,74 @@ module polynomial (F: float): kernel = default F {
   }
 
   let value [n] (p: s) (u: [n]t) (v: [n]t): t =
-    F.((p.gamma * T.dot u v + p.coef0) ** p.degree)
-}
-
--- | The sigmoid kernel:
--- K(u, v) = tanh (\gamma * <u, v> + c)
-module sigmoid (F: float): kernel = default F {
-  module T = kernel_util F
-
-  type t = F.t
-  type s = {
-    gamma: t,
-    coef0: t
-  }
-
-  let value [n] (p: s) (u: [n]t) (v: [n]t): t =
-    F.(tanh (p.gamma * T.dot u v + p.coef0))
+    R.((p.gamma * util.dot u v + p.coef0) ** p.degree)
 }
 
 -- | The rbf kernel with simple squared distance calculated by:
 -- K(u, v) = \exp(-\gamma * ||u - v||²)
 --         = \exp(-\gamma * (\sum (u_i - v_i)²))
-module rbf_simple (F: float): kernel = {
-  module T = kernel_util F
+module rbf (R: real): kernel
+    with t = R.t
+    with s = {gamma: R.t} = {
+  module util = kernel_util R
 
-  type t = F.t
+  type t = R.t
   type s = {
     gamma: t
   }
 
   let value [n] ({gamma}: s) (u: [n]t) (v: [n]t): t =
-    F.exp (F.negate gamma F.* T.sqdist u v)
+    R.exp (R.negate gamma R.* util.sqdist u v)
 
-  -- rbf diagonals are always all 1's.
+  -- rbf diagonals are always all 1 because the squared distance
+  -- of a point to itself is 0 and \exp(\gamma * 0) is 1.
   let extdiag [n] (_: s) (_: [n][n]t): *[n]t =
-    replicate n (F.i32 1)
+    replicate n (R.i32 1)
 
   let diag [n][m] (_: s) (_: [n][m]t): *[n]t =
-    replicate n (F.i32 1)
+    replicate n (R.i32 1)
 
-  let row    (p: s) = T.row    (value p)
-  let matrix (p: s) = T.matrix (value p)
+  let row    (p: s) = util.row    (value p)
+  let matrix (p: s) = util.matrix (value p)
 }
 
 -- | The rbf kernel where the matrix and row operations use
 -- <u, u> + <v, v> - 2 * <u, v> to find the squared distance:
 -- K(u, v) = \exp(-\gamma * (<u, u> + <v, v> - 2 * <u, v>))
-module rbf (F: float): kernel = {
-  module T = kernel_util F
+-- It happens to be much slower than rbf in practice.
+module rbf_pre (R: real): kernel
+    with t = R.t
+    with s = {gamma: R.t} = {
+  module util = kernel_util R
 
-  type t = F.t
+  type t = R.t
   type s = {
     gamma: t
   }
 
   let value [n] ({gamma}: s) (u: [n]t) (v: [n]t): t =
-    F.exp (F.negate gamma F.* T.sqdist u v)
+    R.exp (R.negate gamma R.* util.sqdist u v)
 
   let extdiag [n] (_: s) (_: [n][n]t): *[n]t =
-    replicate n (F.i32 1)
+    replicate n (R.i32 1)
 
   let diag [n][m] (_: s) (_: [n][m]t): *[n]t =
-    replicate n (F.i32 1)
+    replicate n (R.i32 1)
 
   let row [n][m] ({gamma}: s) (X: [n][m]t)
       (u: [m]t) (D: [n]t) (d_u: t): *[n]t =
-    let k x = F.exp (F.negate gamma F.* x)
-    in map2 (\v d_v -> k F.(d_u + d_v - i32 2 * T.dot u v)) X D
+    let k x = R.exp (R.negate gamma R.* x)
+    in map2 (\v d_v -> k R.(d_u + d_v - i32 2 * util.dot u v)) X D
 
   let matrix [n][m][o] (p: s) (X0: [n][m]t)
       (X1: [o][m]t) (D0: [n]t) (D1: [o]t): *[n][o]t =
     map2 (\u d_u -> row p X1 u D1 d_u) X0 D0
+}
+
+-- | Aggregation module for kernels.
+module kernels (R: real) = {
+  module linear     = linear R
+  module sigmoid    = sigmoid R
+  module polynomial = polynomial R
+  module rbf        = rbf R
 }

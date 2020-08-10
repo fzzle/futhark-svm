@@ -1,79 +1,91 @@
-import "../../diku-dk/sorts/radix_sort"
+import "../../../diku-dk/sorts/radix_sort"
+
 import "util"
-import "kernels"
-import "solvers/kernel_chunk_cache"
+import "types"
+import "kernel"
+import "solver"
 
--- Requires y to be 0, 1, 2...
-entry fit [n][m] (X: [n][m]f32) (Y: [n]i32) (k_id: i32)
-    (C: f32) (gamma: f32) (coef0: f32) (degree: f32)
-    (eps: f32) (max_iter: i32) =
-  let kernel = kernel_from_id k_id
-  let p = {kernel, gamma, coef0, degree}
-  -- t: Number of classes.
-  let t = 1 + i32.maximum Y
-  let counts = bincount t Y
-  let starts = exclusive_scan (+) 0 counts
-  let out = replicate (t*(t-1)/2) (0, 0, 0, 0)
-  -- Sort samples by class (no negative classes allowed).
-  let sort_by_fst = radix_sort_by_key (.0) i32.num_bits i32.get_bit
-  let X = map (.1) (sort_by_fst (zip Y X))
-  -- TODO: Weights, Cp / Cn
-  -- WC = map2 (*) C W
-  -- then solve WC[i] WC[j]
-  let (A_I, out, _) =
-    loop (A_I, out, k) = ([], out, 0) for i < t do
-      loop (A_I, out, k) = (A_I, out, k) for j in i + 1..<t do
-        let (si, ci) = (starts[i], counts[i])
-        let (sj, cj) = (starts[j], counts[j])
-        let c = ci + cj
-        let X_k = concat_to c X[si:si + ci] X[sj:sj + cj]
-        let (I_k, Y_k) = unzip (map (\i ->
-          if i < ci
-          then (si + i, 1)
-          else (sj + i - ci, -1)) (iota c))
-        let (A_k, obj, rho, i) = solve X_k Y_k p C C eps max_iter
-        -- Only keep non-zero alphas.
-        -- Should use a tiny threshold mby
-        --                            > tau w/ tau=0e-12 by def or 0
-        let A_I_k = filter (\x -> x.0 != 0) (zip A_k I_k)
-        let out[k] = (length A_I_k, obj, rho, i)
-        in (A_I ++ A_I_k, out, k + 1)
-  let (A, I) = unzip A_I
-  let (sizes, O, R, iter) = unzip4 out
-  -- Remove the samples from X that aren't used as support vectors.
-  -- We do this by finding B[i] which is 1 if X[i] is used as a
-  -- support vector and 0 if not.
-  -- let bins = replicate n false
-  let trues = map (\_ -> true) I
-  let B = scatter (replicate n false) I trues
-  let S = gather X (filter (\i -> B[i]) (iota n))
-  -- Remap indices for support vectors.
-  let remap = scan (+) 0 (map i32.bool B)
-  let I' = map (\i -> remap[i] - 1) I
-  in (A, I', S, sizes, R, O, iter, t)
+module svc (R: float) (S: kernel with t = R.t) = {
+  local open solver R S
 
+  -- | Train a model on X/Y.
+  let fit [n][m] (X: [n][m]t) (Y: [n]i32) (C: t)
+      (m_p: m_t) (k_p: s): output t [m] =
+    #[unsafe]
+    -- Number of distinct classes.
+    let n_c = 1 + i32.maximum Y
+    let counts = bincount n_c Y
+    let starts = exclusive_scan (+) 0 counts
+    -- Sort samples by class (no negative integers).
+    let sort_by_fst = radix_sort_by_key (.0) i32.num_bits i32.get_bit
+    let X = map (.1) (sort_by_fst (zip Y X))
+    -- Number of models to train.
+    let n_m = n_c * (n_c - 1) / 2
+    -- Allocate for output of trained models.
+    let out = replicate n_m (0, R.i32 0, R.i32 0, 0, 0)
+    let (A_I, k) = ([], 0)
+    let (A_I', out', _) =
+      loop (A_I, out, k) for i < n_c do
+        loop (A_I, out, k) for j in i+1..<n_c do
+          let (s_i, c_i) = (starts[i], counts[i])
+          let (s_j, c_j) = (starts[j], counts[j])
+          let n_s = c_i + c_j
+          let X_i = X[s_i:s_i + c_i]
+          let X_j = X[s_j:s_j + c_j]
+          let X_k = concat_to n_s X_i X_j
+          -- Set Y[t < c_i] = 1 and Y[t >= c_i] = -1.
+          let (I_k, Y_k) = unzip (map (\t ->
+            if t < c_i
+            then (s_i + t, R.i32 1)
+            else (s_j + t - c_i, R.i32 (-1))) (iota n_s))
+          -- Solve for X_k and Y_k.
+          let (A_k, o, r, t, t_out) = solve X_k Y_k (C, C) m_p k_p
+          let A_I_k = filter (\x -> R.(x.0 != i32 0)) (zip A_k I_k)
+          let out[k] = (length A_I_k, o, r, t, t_out)
+          in (A_I ++ A_I_k, out, k + 1)
+    let (A, I) = unzip A_I'
+    let (Z, O, R_, T, T_out) = unzip5 out'
+    -- Remove the samples from X that aren't used as support vectors.
+    -- We do this by finding B_s[i] which is 1 if X[i] is used as a
+    -- support vector and 0 if not.
+    let trues = replicate_for I true
+    let B_s = scatter (replicate n false) I trues
+    let S_ = gather X (filter (\i -> B_s[i]) (iota n))
+    -- Remap indices for support vectors to those of S.
+    let remap = scan (+) 0 (map i32.bool B_s)
+    let I = map (\i -> remap[i] - 1) I
+    let weights = {A, I, S=S_, Z, R=R_, n_c}
+    let details = {O, T, T_out}
+    in {weights, details}
 
-entry predict [n][m][o][v][s] (X: [n][m]f32) (S: [o][m]f32)
-    (A: [v]f32) (I: [v]i32) (rhos: [s]f32) (sizes: [s]i32)
-    (t: i32) (k_id: i32) (gamma: f32) (coef0: f32) (degree: f32)
-    (ws: i32) =
-  let kernel = kernel_from_id k_id
-  let p = {kernel, gamma, coef0, degree}
-  let trius = triu t :> [s](i32, i32)
-  let F = segmented_replicate_to v sizes (iota s)
-  let (P, _) = loop (P, i) = ([], 0) while i < n do
-    let to = i32.min n (i + ws)
-    let K = kernel_matrix p X[i:to] S
-    let P_i = map (\K_i ->
-      let dK_i = map (\j -> K_i[j]) I
-      let prods = map2 (*) dK_i A
-      -- Find decision values (without bias).
-      let ds = reduce_by_index (replicate s 0) (+) 0 F prods
-      let decisions = map3 (\d rho (i, j) ->
-        if d > rho then i else j) ds rhos trius
-      let votes = bincount t decisions
-      let max_by_fst a b = if a.0 > b.0 then a else b
-      let v_c = reduce max_by_fst (0, -1) (zip votes (iota t))
-      in v_c.1) K
-    in (P ++ P_i, i + ws)
-  in P
+  -- | Linear kernel module for rbf computation.
+  local module L = linear R
+  -- | Prediction settings type.
+  type p_s = prediction_settings t
+
+  -- | Predict classes of samples X.
+  let predict [n][m][o][q] (X: [n][m]t)
+      ({A, I, S=S_, R=R_, Z, n_c}: weights t [m])
+      ({n_ws}: prediction_settings t) (k_p: s): [n]i32 =
+    let D_l_S = L.diag {} S_
+    let trius = triu n_c :> [q](i32, i32)
+    let F = segmented_replicate_to o Z (iota q)
+    let (Y, i) = ([], 0)
+    let (Y, _) = loop (Y, i) while i < n do
+      let to = i32.min n (i + 64)
+      let D_l_X = L.diag {} X[i:to]
+      let K = S.matrix k_p X[i:to] S_ D_l_X D_l_S
+      let Y_i = map (\K_i ->
+        let dK_i = map (\j -> K_i[j]) I
+        let prods = map2 (R.*) dK_i A
+        -- Find decision values (without bias).
+        let ds = reduce_by_index (replicate q (R.i32 0)) (R.+) (R.i32 0) F prods
+        let decisions = map3 (\d r (i, j) ->
+          if R.(d > r) then i else j) ds R_ trius
+        let votes = bincount n_c decisions
+        let max_by_fst a b = if a.0 > b.0 then a else b
+        let v_c = reduce max_by_fst (0, -1) (zip votes (iota n_c))
+        in v_c.1) K
+      in (Y ++ Y_i, i + 64)
+    in Y:> [n]i32
+}
