@@ -10,9 +10,6 @@ module k1 = svc kernels.sigmoid
 module k2 = svc kernels.polynomial
 module k3 = svc kernels.rbf
 
--- | Float type.
-type t = f32.t
-
 -- | Entrypoint for SVC fit.
 entry svc_fit [n][m] (X: [n][m]f32) (Y: [n]i32)
     (k_id: i32) (C: f32) (n_ws: i32) (max_t: i32)
