@@ -1,8 +1,6 @@
 import "svm"
 import "types"
 
--- Entrypoints for calling with Python.
-
 module svm = fsvm f32
 module svc = svm.svc
 module kernels = svm.kernels
