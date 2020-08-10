@@ -1,7 +1,7 @@
--- Entrypoints for calling with Python.
-
 import "svm"
 import "types"
+
+-- Entrypoints for calling with Python.
 
 module svm = fsvm f32
 module svc = svm.svc
@@ -38,13 +38,13 @@ let svc_predict [n][m][o][p][q] 't predict (make_k_p: k_t -> t)
   let k_p = make_k_p (gamma, coef0, degree)
   in predict X m_w p_p k_p
 
--- | Entrypoints for SVC fit.
+-- Entrypoints for SVC fit.
 entry svc_linear_fit     = svc_fit svc0.fit make_k_p0
 entry svc_sigmoid_fit    = svc_fit svc1.fit make_k_p1
 entry svc_polynomial_fit = svc_fit svc2.fit make_k_p2
 entry svc_rbf_fit        = svc_fit svc3.fit make_k_p3
 
--- | Entrypoints for SVC predict.
+-- Entrypoints for SVC predict.
 entry svc_linear_predict     = svc_predict svc0.predict make_k_p0
 entry svc_sigmoid_predict    = svc_predict svc1.predict make_k_p1
 entry svc_polynomial_predict = svc_predict svc2.predict make_k_p2
