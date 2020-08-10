@@ -60,12 +60,12 @@ module svc (R: float) (S: kernel with t = R.t) = {
   -- | Linear kernel module for rbf computation.
   local module L = linear R
   -- | Prediction settings type.
-  type p_s = prediction_settings t
+  type p_t = prediction_settings t
 
   -- | Predict classes of samples X.
   let predict [n][m][o][q] (X: [n][m]t)
       ({A, I, S=S_, R=R_, Z, n_c}: weights t [m])
-      ({n_ws}: prediction_settings t) (k_p: s): [n]i32 =
+      ({n_ws}: p_t) (k_p: s): [n]i32 =
     let D_l_S = L.diag {} S_
     let trius = triu n_c :> [q](i32, i32)
     let F = segmented_replicate_to o Z (iota q)
