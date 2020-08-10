@@ -170,8 +170,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
 
     let c_p1: [n_ws][n]t = c.p1
     let c_i1: [n_ws]i32  = c.i1
-
-    in if i < 2 then
+    in if i < 2 then -- If not warm
       let X_ws = gather X I_ws
       let D_r_ws = gather D_r I_ws
       let K_ws_t = S.matrix k_p X_ws X D_r_ws D_r
@@ -187,6 +186,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
     let (I_m, I_h) = partition (\i -> B_m[i]) (iota n_ws)
     -- TODO: Use cached rows .p, computing 1024 ws colums less.
     -- Partition in working_set and save indices not in ws.
+
     -- map (\i -> ) cache.pi
     let I_ws_m = gather I_ws I_m
     let X_ws_m = gather X I_ws_m
@@ -203,7 +203,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
     in (cache', transpose K_ws_t)
 
   -- | Assumes that ws < n
-  local let working_set [n] (Y: [n]t) (F: [n]t)
+  let working_set [n] (Y: [n]t) (F: [n]t)
       (A: [n]t) ((Cp, Cn): C_t) (n_ws: i32): *[n_ws]i32 =
     -- Get indices of sorted optimality indicators F.
     let I = map (.1) (radix_sort_float R.num_bits
@@ -234,7 +234,10 @@ module solver (R: float) (S: kernel with t = R.t) = {
     -- Put back at original indices.
     -- in (unzip (filter (.0) (zip S I))).1 :> *[ws]i32
     let S' = scatter (replicate n false) I S
-    in filter (\i -> S'[i]) (iota n) :> *[n_ws]i32
+    let I_ws = filter (\i -> S'[i]) (iota n) :> *[n_ws]i32
+
+    in I_ws
+
 
   let d_eps: t = R.f32 1e-6
 
@@ -260,9 +263,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
       loop (c, i, j, d, F, A, cache) while c && i < m_p.max_t_out do
       -- We can spare finding working set + finding K_ws if we simply
       -- check the entire dataset if we're done.
-
       -- let (K_ws, I_ws) = select_ws X Y C lru model k_p
-
       let I_ws = working_set Y F A C n_ws
       let (cache', K_ws) = refer X D_r k_p n_ws cache I_ws i
       -- Gather ws data.
@@ -294,14 +295,14 @@ module solver (R: float) (S: kernel with t = R.t) = {
         in (b && k < m_p.max_t_in, k + 1, F_ws', A_ws')
       -- Update F and write back A_ws to A.
       let d_ws = map3 (\a' a y -> R.((a' - a) * y)) A_ws' A_ws Y_ws
-      let F' = map2 (\f K_i -> R.(f + sum (map2 (*) d_ws K_i))) F K_ws
+      let F' = map2 (\f K_i -> R.(f + sum (map2 (*) K_i d_ws))) F K_ws
       let A' = scatter A I_ws A_ws'
       -- Update difference infos.
       in (true, i + 1, j + k, d', F', A', cache')
     let o = find_obj Y F A
     let r = find_rho Y F A C d.d
     -- Multiply y on alphas for prediction.
-    let A = map2 (R.*) A Y
+    let A = map2 (R.*) Y A
     -- Returns alphas, objective value, bias, and iterations.
     in (A, o, r, j, i)
 
@@ -311,7 +312,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
   -- full-kernel solver (solve_full) is used instead.
   let solve [n][m] (X: [n][m]t) (Y: [n]t) (C: C_t)
       (m_p: m_t) (k_p: s): ([n]t, t, t, i32, i32) =
-    if n <= m_p.n_ws * 2
+    if n <= m_p.n_ws
     then solve_full X Y C m_p k_p
     else solve_ws   X Y C m_p k_p
 }
