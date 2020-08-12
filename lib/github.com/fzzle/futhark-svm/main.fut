@@ -1,9 +1,9 @@
 import "svm"
 import "types"
 
-module svm = fsvm f32
-module svc = svm.svc
-module kernels = svm.kernels
+module fsvm = svm f32
+module svc = fsvm.svc
+module kernels = fsvm.kernels
 
 module svc0 = svc kernels.linear
 module svc1 = svc kernels.sigmoid
