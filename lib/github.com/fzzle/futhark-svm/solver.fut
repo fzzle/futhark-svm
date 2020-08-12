@@ -34,7 +34,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
     let F_u_I = map3 (\b f i ->
       if b then (f, i) else (R.inf, -1)) B_u F (iota n)
     let min_by_fst a b = if R.(a.0 < b.0) then a else b
-    let (f_u, u) = reduce_comm min_by_fst (R.inf, -1) F_u_I
+    let (f_u, u) = reduce min_by_fst (R.inf, -1) F_u_I
     -- Find f_max so we can check if we're done.
     let B_l = map2 (is_lower Cn) Y A
     let F_l = map2 (\b f -> if b then f else R.(negate inf)) B_l F
@@ -52,7 +52,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
         then (R.(b * b / (D[u] + d - i32 2 * k_u)), i)
         else (R.(negate inf), -1)) F_l D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
-    let (_, l) = reduce_comm max_by_fst (R.(negate inf), -1) V_l_I
+    let (_, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
     let y_u = Y[u]
     let y_l = Y[l]
     let b = R.(f_u - F[l])
@@ -97,7 +97,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
       then (R.(i32 2 / (D[0] + d - i32 2 * k_u)), i)
       else (R.(negate inf), -1)) Y D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
-    let (beta, l) = reduce_comm max_by_fst (R.(negate inf), -1) V_l_I
+    let (beta, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
     -- We bound d_l by both Cn and Cp as it's unlikely for 2 / eta to
     -- be greater at the initial step. Otherwise, if a_u was greater
     -- than Cp we wouldn't be able to eliminate d_u * k_u.
@@ -149,7 +149,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
       then (R.(i32 2 / (D[0] + d - i32 2 * k_u)), i)
       else (R.(negate inf), -1)) Y D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
-    let (beta, l) = reduce_comm max_by_fst (R.(negate inf), -1) V_l_I
+    let (beta, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
     let K_l = S.row k_p X X[l] D_r D_r[l]
     let a = R.min beta (R.min Cp Cn) -- a_l
     let F = map3 (\y k_u k_l -> R.(a * (k_u - k_l) - y)) Y K_u K_l
