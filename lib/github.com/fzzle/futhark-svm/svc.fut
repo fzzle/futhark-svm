@@ -6,7 +6,16 @@ import "kernel"
 import "solver"
 
 module svc (R: float) (S: kernel with t = R.t) = {
-  local open solver R S
+  module smo = solver R S
+
+  -- | Kernel parameters type.
+  type s = smo.s
+  -- | Float type.
+  type t = smo.t
+  -- | Model settings type.
+  type m_t = smo.m_t
+  -- | Weighted C pair type.
+  type C_t = smo.C_t
 
   -- | Train a model on X/Y.
   let fit [n][m] (X: [n][m]t) (Y: [n]i32) (C: t)
@@ -38,7 +47,7 @@ module svc (R: float) (S: kernel with t = R.t) = {
             then (s_i + t, R.i32 1)
             else (s_j + t - c_i, R.i32 (-1))) (iota n_s))
           -- Solve for X_k and Y_k.
-          let (A_k, o, r, t, t_out) = solve X_k Y_k (C, C) m_p k_p
+          let (A_k, o, r, t, t_out) = smo.solve X_k Y_k (C, C) m_p k_p
           let A_I_k = filter (\x -> R.(x.0 != i32 0)) (zip A_k I_k)
           let out[k] = (length A_I_k, o, r, t, t_out)
           in (A_I ++ A_I_k, out, k + 1)
