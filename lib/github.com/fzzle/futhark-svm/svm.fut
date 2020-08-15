@@ -11,7 +11,7 @@ module svm (R: float) = {
   module kernels = kernels R
 
   -- | Default training settings.
-  let default_training: training_settings t = {
+  let default_fit: training_settings t = {
     n_ws = 1024,       -- # of threads.
     max_t = 100000000, -- 10x libsvm's default.
     max_t_in = 102400, -- Same as tsvm (max 100000 (n_ws*100)).
@@ -20,7 +20,7 @@ module svm (R: float) = {
   }
 
   -- | Default prediction settings.
-  let default_prediction: prediction_settings t = {
+  let default_predict: prediction_settings t = {
     n_ws = 64
   }
 }
