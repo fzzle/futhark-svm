@@ -19,9 +19,9 @@ module P = fsvm.svc K.rbf
 -- libsvm: [-3.143738f32, -3.592592f32, -74.489527f32]
 -- fsvm:   [-3.155767f32, -3.596976f32, -74.02107f32]
 -- ==
--- entry: fit_iris_polynomial
+-- entry: fit_iris_rbf
 -- compiled input @ iris.data
 -- output { [-3.155767f32, -3.596976f32, -74.02107f32] }
-entry fit_iris_polynomial X y =
+entry fit_iris_rbf X y =
   let {weights=_, details} = P.fit X y 10 fsvm.default_fit {gamma=1}
   in details.O

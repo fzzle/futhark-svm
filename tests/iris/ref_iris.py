@@ -7,6 +7,6 @@ iris = load_iris()
 c0 = SVC(kernel='linear', C=1, verbose=True)
 c0.fit(iris.data, iris.target)
 
-# Polynomial ref.
+# RBF ref.
 c1 = SVC(kernel='rbf', C=10, gamma=1, verbose=True)
 c1.fit(iris.data, iris.target)
