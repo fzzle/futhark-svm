@@ -4,5 +4,9 @@ from sklearn.svm import SVC
 iris = load_iris()
 
 # Reference for test #1 in test_iris.fut.
-c = SVC(kernel='linear', C=1, verbose=True)
-c.fit(iris.data, iris.target)
+c0 = SVC(kernel='linear', C=1, verbose=True)
+c0.fit(iris.data, iris.target)
+
+# Polynomial ref.
+c1 = SVC(kernel='rbf', C=10, gamma=1, verbose=True)
+c1.fit(iris.data, iris.target)
