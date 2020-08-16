@@ -18,9 +18,8 @@ module solver (R: float) (S: kernel with t = R.t) = {
   -- | Weighted C pair type.
   type C_t = (t, t)
 
-  -- | Clamps a number x between l and u.
-  local let clamp (l: t) (x: t) (u: t): t =
-    R.(max l (min x u))
+  -- | Lower bound on eta.
+  local let tau = R.f32 1e-12
 
   -- | Performs a single optimization step. Returns a bool indicating
   -- if it has reached the threshold model.eps, a pair of f_u and f_l,
@@ -38,9 +37,9 @@ module solver (R: float) (S: kernel with t = R.t) = {
     -- Find f_max so we can check if we're done.
     let B_l = map2 (is_lower Cn) Y A
     let F_l = map2 (\b f -> if b then f else R.(negate inf)) B_l F
-    let f_l = R.maximum F_l
+    let f_max = R.maximum F_l
     -- Check if done.
-    in if R.(f_l - f_u < m_p.eps) then (false, (f_u, f_l), F, A) else
+    in if R.(f_max-f_u<m_p.eps) then (false, (f_u, f_max), F, A) else
     -- Find the extreme sample x_l.
     let K_u = K[u]
     let V_l_I = map4 (\f d k_u i ->
@@ -49,28 +48,30 @@ module solver (R: float) (S: kernel with t = R.t) = {
       -- If f is not in F_lower then f = -f32.inf and b = f32.inf.
       -- Checks if u isn't -1 and f in F_lower and b < 0.
       in if R.(b < i32 0)
-        then (R.(b * b / (D[u] + d - i32 2 * k_u)), i)
+        then (R.(b * b / (max tau (D[u] + d - i32 2 * k_u))), i)
         else (R.(negate inf), -1)) F_l D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
     let (_, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
-    let y_u = Y[u]
-    let y_l = Y[l]
-    let b = R.(f_u - F[l])
-    -- eta should always be >0.
-    let eta = R.(D[u] + D[l] - i32 2 * K_u[l])
+    -- Find bounds.
+    let c_u = R.(if Y[u] > i32 0 then Cp - A[u] else A[u])
+    let c_l = R.(if Y[l] < i32 0 then Cn - A[l] else A[l])
+    let eta = R.(max tau (D[u] + D[l] - i32 2 * K_u[l]))
+    let b = R.(F[l] - f_u)
     -- Find new a_u and a_l.
-    let a_l = clamp (R.i32 0) R.(A[l] + y_l * b / eta) Cn
-    let a_u = clamp (R.i32 0) R.(A[u] + y_l * y_u*(A[l]-a_l)) Cp
+    let q = R.(min (min c_u c_l) (b / eta))
     -- Find the differences * y.
-    let d_u = R.((a_u - A[u]) * y_u)
-    let d_l = R.((a_l - A[l]) * y_l)
+    let a_u = R.(A[u] + q * Y[u])
+    let a_l = R.(A[l] - q * Y[l])
     -- Update optimality indicators.
-    let F' = map3 (\f k_u k_l ->
-      R.(f + d_u * k_u + d_l * k_l)) F K_u K[l]
+    let F' = map3 (\f k_u k_l -> R.(f + q * (k_u - k_l))) F K_u K[l]
     -- Write back updated alphas.
     let A' = map2 (\a i ->
       if i == u then a_u else if i == l then a_l else a) A (iota n)
-    in (true, (f_u, f_l), F', A')
+    -- q should always be greater than 0. Under unusual circumstances
+    -- (such as floating-point underflow) where q is 0, we signal
+    -- that the solver is finished, since it is stuck otherwise.
+    in (R.(q > i32 0), (f_u, f_max), F', A')
+
 
   -- | Computes the objective value.
   local let find_obj [n] (Y: [n]t) (F: [n]t) (A: [n]t): t =

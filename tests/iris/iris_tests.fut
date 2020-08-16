@@ -15,13 +15,10 @@ entry fit_iris_linear X y =
 
 module R = fsvm.svc K.rbf
 
--- Objective values won't be entirely the same, but it's close..
--- libsvm: [-3.143738f32, -3.592592f32, -74.489527f32]
--- fsvm:   [-3.155767f32, -3.596976f32, -74.02107f32]
 -- ==
 -- entry: fit_iris_rbf
 -- compiled input @ iris.data
--- output { [-3.155767f32, -3.596976f32, -74.02107f32] }
+-- output { [-3.143738f32, -3.592592f32, -74.489527f32] }
 entry fit_iris_rbf X y =
   let {weights=_, details} = R.fit X y 10 fsvm.default_fit {gamma=1}
   in details.O
