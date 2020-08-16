@@ -74,7 +74,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
 
   -- | Computes the objective value.
   local let find_obj [n] (Y: [n]t) (F: [n]t) (A: [n]t): t =
-    R.(f32 (-0.5) * sum (map3 (\a f y -> a * (i32 1 - f * y)) A F Y))
+    R.(f32 (-0.5) * sum (map3 (\y f a -> a * (i32 1 - f * y)) Y F A))
 
   -- | Computes the bias.
   local let find_rho [n] (Y: [n]t) (F: [n]t) (A: [n]t)
