@@ -15,14 +15,13 @@ entry fit_iris_linear X y =
 
 module P = fsvm.svc K.polynomial
 
--- libsvm: -26.0443f32, got -24.302277f32
 -- ==
 -- entry: fit_iris_polynomial
 -- compiled input @ iris.data
--- output { [-0.000147, -0.000028, -24.302277f32] }
+-- output { [-77.330459f32, -19.821694f32, -289.554323f32] }
 entry fit_iris_polynomial X y =
   let {weights=_, details} = P.fit X y 10 fsvm.default_fit
-    {gamma=1, coef0=0, degree=3}
+    {gamma=0.01, coef0=0, degree=3}
   in details.O
 
 module R = fsvm.svc K.rbf
