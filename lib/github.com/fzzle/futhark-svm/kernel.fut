@@ -7,6 +7,7 @@ module type kernel_function = {
   val value [n]: s -> [n]t -> [n]t -> t
 }
 
+-- | Kernel computation module type.
 module type kernel = {
   include kernel_function
   -- | Compute the kernel diagonal.
@@ -51,9 +52,12 @@ module kernel_util (R: real) = {
 }
 
 -- | Parametric module which makes it possible to implement a new
--- kernel type only by providing the kernel function and the model
--- parameters of the function.
-module default (R: real) (T: kernel_function with t = R.t) = {
+-- kernel type only by providing the kernel function and the type
+-- for the model parameters of the function. Alternatively, it's
+-- possible to define a kernel from scratch using the kernel module
+-- type. It allows the specification of how the matrix, diag, etc.
+-- should be computed, in case it can be done better than w/ this.
+module default_kernel (R: real) (T: kernel_function with t = R.t) = {
   module util = kernel_util R
 
   type t = T.t
@@ -70,7 +74,7 @@ module default (R: real) (T: kernel_function with t = R.t) = {
 -- K(u, v) = <u, v>
 module linear (R: real): kernel
     with t = R.t
-    with s = {} = default R {
+    with s = {} = default_kernel R {
   module util = kernel_util R
 
   type t = R.t
@@ -83,7 +87,7 @@ module linear (R: real): kernel
 -- K(u, v) = tanh (\gamma * <u, v> + c)
 module sigmoid (R: real): kernel
     with t = R.t
-    with s = {gamma: R.t, coef0: R.t} = default R {
+    with s = {gamma: R.t, coef0: R.t} = default_kernel R {
   module util = kernel_util R
 
   type t = R.t
@@ -100,7 +104,7 @@ module sigmoid (R: real): kernel
 -- K(u, v) = (\gamma * <u, v> + c) ** degree
 module polynomial (R: real): kernel
     with t = R.t
-    with s = {gamma: R.t, coef0: R.t, degree: R.t} = default R {
+    with s = {gamma:R.t,coef0:R.t,degree:R.t} = default_kernel R {
   module util = kernel_util R
 
   type t = R.t
