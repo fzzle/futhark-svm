@@ -1,18 +1,20 @@
-FSVM_PATH=lib/github.com/fzzle/futhark-svm
+fsvm_path=lib/github.com/fzzle/futhark-svm
+
+.PHONY: build install clean test
+
+build:
+	futhark pkg sync
+	mkdir -p python/bin
+	futhark opencl --library $(fsvm_path)/main.fut -o python/bin/fsvm
+
+install:
+	cd python; pip install .
 
 clean:
-	find bin/ -type f -delete
-	find bench/* ! -name '*.fut' -delete
-	find tests/* ! -name '*.fut' -delete
-
-setup:
-	futhark pkg sync
-
-build: # Build for use w/ Python.
-	mkdir -p bin
-	futhark opencl --library $(FSVM_PATH)/main.fut -o bin/main
-	cd bin; build_futhark_ffi main
+	find lib/github.com/diku-dk -delete
+	find python/bin -delete
 
 test:
 	futhark test --backend=opencl tests/
-	find tests/* ! -name '*.fut' -delete
+	find tests -name '*.c' -type f -delete
+	find tests -name '*.*' -type f -delete
