@@ -52,7 +52,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
         else (R.(negate inf), -1)) F_l D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
     let (_, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
-    -- Find bounds.
+    -- Find bounds for a_u, a_l.
     let c_u = R.(if Y[u] > i32 0 then Cp - A[u] else A[u])
     let c_l = R.(if Y[l] < i32 0 then Cn - A[l] else A[l])
     let eta = R.(max tau (D[u] + D[l] - i32 2 * K_u[l]))
@@ -69,9 +69,8 @@ module solver (R: float) (S: kernel with t = R.t) = {
       if i == u then a_u else if i == l then a_l else a) A (iota n)
     -- q should always be greater than 0. Under unusual circumstances
     -- (such as floating-point underflow) where q is 0, we signal
-    -- that the solver is finished, since it is stuck otherwise.
+    -- that the solver is finished, since it'll be stuck otherwise.
     in (R.(q > i32 0), (f_u, f_max), F', A')
-
 
   -- | Computes the objective value.
   local let find_obj [n] (Y: [n]t) (F: [n]t) (A: [n]t): t =
