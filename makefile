@@ -8,7 +8,7 @@ build:
 	futhark opencl --library $(fsvm_path)/main.fut -o python/bin/fsvm
 
 install:
-	cd python; pip install --user .
+	cd python; pip3 install --user .
 
 clean:
 	find lib/github.com/diku-dk -delete
