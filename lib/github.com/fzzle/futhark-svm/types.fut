@@ -19,32 +19,32 @@ type prediction_settings 't = {
   n_ws: i32
 }
 
-type~ weights 't [m] = {
+type weights 't [m][o][p][q] = {
   -- Flat alphas.
-  A: []t,
+  A: [o]t,
   -- Flat support vector indices.
-  I: []i32,
+  I: [o]i32,
   -- Support vectors.
-  S: [][m]t,
+  S: [p][m]t,
   -- Segment sizes of flat alphas/indices.
-  Z: []i32,
+  Z: [q]i32,
   -- Rhos (-bias/intercept).
-  R: []t,
+  R: [q]t,
   -- Number of classes.
   n_c: i32
 }
 
-type~ details 't = {
+type details 't [q] = {
   -- Objective values.
-  O: []t,
+  O: [q]t,
   -- Total iterations (inner).
-  T: []i32,
+  T: [q]i32,
   -- Outer iterations.
-  T_out: []i32
+  T_out: [q]i32
 }
 
 -- | Trained model type.
-type~ output 't [m] = {
-  weights: weights t [m],
-  details: details t
+type output 't [m][o][p][q] = {
+  weights: weights t [m][o][p][q],
+  details: details t [q]
 }
