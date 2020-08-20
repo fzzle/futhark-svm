@@ -11,7 +11,7 @@ def strip_includes(f):
 
 with io.open(path.join(here, 'bin/fsvm.c')) as f:
   ffi.set_source(
-    '_main',
+    '_fsvm',
     f.read(),
     libraries=['OpenCL'],
     extra_compile_args=[
