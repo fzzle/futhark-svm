@@ -8,7 +8,8 @@ build:
 	futhark opencl --library $(fsvm_path)/main.fut -o python/bin/fsvm
 
 install:
-	cd python; pip install .
+	cd python
+	pip install --user .
 
 clean:
 	find lib/github.com/diku-dk -delete
@@ -17,4 +18,4 @@ clean:
 test:
 	futhark test --backend=opencl tests/
 	find tests -name '*.c' -type f -delete
-	find tests -name '*.*' -type f -delete
+	find tests ! -name '*.*' -type f -delete
