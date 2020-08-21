@@ -17,6 +17,8 @@ with open('settings.json') as f:
   data = json.load(f)
 
 for s in data['models']:
+  print(s)
+
   m = SVC(
     kernel = s.get('kernel', 'rbf'),
     C      = s.get('C', 10.0),
