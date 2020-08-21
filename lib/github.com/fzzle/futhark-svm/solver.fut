@@ -78,14 +78,14 @@ module solver (R: float) (S: kernel with t = R.t) = {
 
   -- | Computes the bias.
   local let find_rho [n] (Y: [n]t) (F: [n]t) (A: [n]t)
-      ((Cp, Cn): C_t) ((f_u, f_l): (t, t)): t =
+      ((Cp, Cn): C_t) (v:t): t =
     -- Find free alphas to find rho.
     let B_f = map2 (is_free Cp Cn) Y A
     let F_f = map2 (\b f -> if b then f else R.i32 0) B_f F
     let n_f = i32.sum (map i32.bool B_f)
     -- Average value of f for free alphas.
     let v_f = R.(sum F_f / i32 n_f)
-    in if n_f > 0 then v_f else R.((f_u + f_l) * f32 (-0.5))
+    in if n_f > 0 then v_f else R.(v * f32 (-0.5))
 
   -- | Solves the intial step given a full kernel K, initializing
   -- optimality indicators F and alphas A.
@@ -129,7 +129,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
         let (b, d', F', A') = solve_step K D Y F A C m_p
         in (b, i + 1, d', F', A')
     let o = find_obj Y F A
-    let r = find_rho Y F A C d
+    let r = find_rho Y F A C (R.(d.0+d.1))
     -- Multiply y on alphas for prediction.
     let A = map2 (R.*) A Y
     -- Returns alphas, objective value, bias, and iterations.
@@ -203,40 +203,81 @@ module solver (R: float) (S: kernel with t = R.t) = {
     in (cache', transpose K_ws_t)
 
   -- | Assumes that ws < n
-  let working_set [n] (Y: [n]t) (F: [n]t)
-      (A: [n]t) ((Cp, Cn): C_t) (n_ws: i32): *[n_ws]i32 =
+  let working_set [n][m] (X: [n][m]t) (D_r: [n]t) (k_p: s)
+      (Y: [n]t) (F: [n]t) (A: [n]t) ((Cp, Cn): C_t) (n_ws: i32)
+      (p0: [n_ws][n]t) (p1: [n_ws][n]t) (i0: [n_ws]i32) (i1: [n_ws]i32)
+      (i: i32): ([n_ws][n]t, [n_ws][n]t, [n_ws]i32, [n_ws]i32) = --: *[n_ws]i32 =
     -- Get indices of sorted optimality indicators F.
     let I = map (.1) (radix_sort_float R.num_bits
       (\i (f, _) -> R.get_bit i f) (zip F (iota n)))
-    let B_ul = map2 (\y a -> (is_upper Cp y a, is_lower Cn y a)) Y A
-    let (B_u, B_l) = unzip (map (\i -> B_ul[i]) I)
+
+    let n_sel = if i > 0 then n_ws/2 else n_ws
+    let selected = scatter (replicate n false) i0 (replicate n_ws true)
+    let B_u = map3 (\s y a -> !s && is_upper Cp y a) selected Y A
+    let B_l = map3 (\s y a -> !s && is_lower Cn y a) selected Y A
+    let (B_u, B_l) = unzip (gather (zip B_u B_l) I)
     let T_u = scan (+) 0 (map i32.bool B_u)
     -- n_u: Spaces allotted to upper.
-    let n_u = i32.min (last T_u) (n_ws / 2)
+    let n_u = n_sel / 2
     -- n_avail -= n_u
     let S_u = map2 (\b_u t_u -> b_u && t_u <= n_u) B_u T_u
     let B_l' = map2 (\b_l' s_u -> b_l' && !s_u) B_l S_u
     let T_l' = scan (+) 0 (map i32.bool B_l')
     -- ws - n_u: Spaces left. n_l: n lower to discard.
-    let n_l = last T_l' - (n_ws - n_u)
-    let S_l = map2 (\b_l' t_l' -> b_l' && t_l' > n_l) B_l' T_l'
-    let S = map2 (||) S_u S_l
+    let n_l = last T_l' - (n_sel / 2)
+    let S_ = map3 (\s b_l' t_l' -> s || (b_l' && t_l' > n_l)) S_u B_l' T_l'
+    let n_selected = reduce (+) 0 (map i32.bool S_)
+
     -- Check if the working set has been filled. If there are still
     -- open slots we fill them with available samples from upper.
-    let n_open = n_ws - (n_u + last T_l')
-    let S = if n_open > 0 then
-      -- Fill remaining slots with upper samples.
-      let B_u' = map2 (\b_u s -> b_u && !s) S_u S
-      let T_u' = scan (+) 0 (map i32.bool B_u')
-      let S_u' = map2 (\b_u' t_u' -> b_u' && t_u' >= n_open) B_u' T_u'
-      in map2 (||) S S_u'
-      else S
+    let n_open = n_ws - n_selected
+
     -- Put back at original indices.
     -- in (unzip (filter (.0) (zip S I))).1 :> *[ws]i32
-    let S' = scatter (replicate n false) I S
-    let I_ws = filter (\i -> S'[i]) (iota n) :> *[n_ws]i32
+    let S' = scatter (replicate n false) I S_
+    let I_ws = filter (\i -> S'[i]) (iota n)
+    let I_ws' = (I_ws ++ i0[0:n_open]) :> [n_ws]i32
 
-    in I_ws
+    -- in if i < 2 then -- If not warm
+    --   let X_ws = gather X I_ws
+    --   let D_r_ws = gather D_r I_ws
+    --   let K_ws_t = S.matrix k_p X_ws X D_r_ws D_r
+    --   let K_ws_t = concat_to n_ws K_ws_t c.p0[0:n_open]
+    --   let cache' = {p0=K_ws_t, p1=c.p0, i0=I_ws', i1=c.i0}
+    --   in cache'
+    -- else
+    -- Find ws values that are cached.
+    let I_c = -- #[incremental_flattening(only_intra)]
+      map (\i_ws -> #[sequential] find_unique i_ws i1) I_ws
+    -- Boolean vector w/ true if miss.
+    let B_m = map (==(-1)) I_c
+    -- I_h: Hit indices, I_m: Miss indices.
+    let (I_m, I_h) = partition (\i -> B_m[i]) (iota (n_ws - n_open))
+    -- TODO: Use cached rows .p, computing 1024 ws colums less.
+    -- Partition in working_set and save indices not in ws.
+
+    -- map (\i -> ) cache.pi
+    let I_ws_m = gather I_ws I_m
+    let X_ws_m = gather X I_ws_m
+    let D_r_ws_m = gather D_r I_ws_m
+    let K_ws_m = S.matrix k_p X_ws_m X D_r_ws_m D_r
+    -- Find indices of computed rows to put them back.
+    let I_m' = map (\i -> i - 1) (scan (+) 0 (map i32.bool B_m))
+    -- Assemble the rows.
+    -- let K_ws_t = map3 (\b_m i_m i_c ->
+      -- if b_m then K_ws_m[i_m] else c_p1[i_c]) B_m I_m' I_c
+
+    let I_c_h = gather I_c I_h
+    let I_ws_h = gather I_ws I_h
+    let K_ws_h = gather p1 I_c_h
+    let I_ws' =  (I_ws_h ++ I_ws_m ++ i0[0:n_open]) :> [n_ws]i32
+    let K_ws_t = (K_ws_h ++ K_ws_m ++ p0[0:n_open]) :> [n_ws][n]t
+
+    -- Cache end
+    in (K_ws_t, p0, I_ws', i0)
+
+
+    -- in (I_ws ++ c.i0[0:n_open]) :> [n_ws]i32
 
 
   let d_eps: t = R.f32 1e-6
@@ -255,55 +296,63 @@ module solver (R: float) (S: kernel with t = R.t) = {
     -- Cache
     let pK = replicate n_ws (replicate n (R.i32 0))
     let prev_I_ws = replicate n_ws (-1i32)
-    let d = {p0=R.i32 2, p1=R.inf, swap=0i32, same=0i32, d=(R.i32 0, R.i32 0)}
-    let cache = {p0=pK, p1=pK, i0=prev_I_ws, i1=prev_I_ws}
+    let d = {d0=R.i32 2, d1=R.inf, swap=0i32, same=0i32, s0=R.i32 0}
+
+    let p0=pK
+    let p1=pK
+    let i0=prev_I_ws
+    let i1=prev_I_ws
+
+    let eps_ws = R.f32 0.2
 
     let (c, i, j) = (true, 0, 1)
-    let (_, i, j, d, F, A, _) =
-      loop (c, i, j, d, F, A, cache) while c && i < m_p.max_t_out do
+    let (_, i, j, d, _, F, A, _, _, _, _) =
+      loop (c, i, j, d, eps_ws, F, A, p0, p1, i0, i1) while c && i < m_p.max_t_out do
       -- We can spare finding working set + finding K_ws if we simply
       -- check the entire dataset if we're done.
       -- let (K_ws, I_ws) = select_ws X Y C lru model k_p
-      let I_ws = working_set Y F A C n_ws
-      let (cache', K_ws) = refer X D_r k_p n_ws cache I_ws i
+      let (p0', p1', i0', i1') = working_set X D_r k_p Y F (copy A) C n_ws p0 p1 i0 i1 i
+      let I_ws = i0'
+      let K_ws = transpose p0'
+      -- let (cache', K_ws) = refer X D_r k_p n_ws cache I_ws i
       -- Gather ws data.
       let D_ws = gather D I_ws
       let Y_ws = gather Y I_ws
       -- Get full kernel rows for ws.
-      -- let K_ws = transpose K_ws_t
       let K_wsx2 = gather K_ws I_ws
-      let solve_step' = solve_step K_wsx2 D_ws Y_ws
       -- F, A
       let F_ws = gather F I_ws
       let A_ws = gather A I_ws
-      -- Perform one step to find the global difference d0=f_l-f_u.
-      let (b0, d_, F_ws0, A_ws0) = solve_step' F_ws A_ws C m_p
-      let d0 = R.(d_.1 - d_.0) -- f_l - f_u
-      -- Check if we're done: If d0 < eps or if it's stuck
-      -- (using the same heuristics as fsvm).
-      let same = if R.(abs (d0 - d.p0) < d_eps) then d.same + 1 else 0
-      let swap = if R.(abs (d0 - d.p1) < d_eps) then d.swap + 1 else 0
-      let stop = !b0 || same >= 10 || swap >= 10
-      let d' = {p0=d0, p1=d.p0, same, swap, d=d_}
-      -- Return untouched d and cache since we're done.
-      in if stop then (false, i, j, d, F, A, cache) else
-      let eps_ws = R.(max m_p.eps (d0 * f32 0.1))
       -- Solve the working set problem
-      let (c1, k) = (true, 1)
-      let (_, k, _, A_ws') = loop (c1, k, F_ws, A_ws) = (c1, k, F_ws0, A_ws0) while c1 do
-        let (b, _, F_ws', A_ws') = solve_step' F_ws A_ws C (m_p with eps = eps_ws)
-        in (b && k < m_p.max_t_in, k + 1, F_ws', A_ws')
+      let (c1, k) = (true, 0)
+      let (_, k, _, A_ws') = loop (c1, k, F_ws, A_ws) while c1 && k < m_p.max_t_in do
+        let (b, _, F_ws', A_ws') = solve_step K_wsx2 D_ws Y_ws F_ws A_ws C m_p
+        in (b, k + 1, F_ws', A_ws')
       -- Update F and write back A_ws to A.
       let d_ws = map3 (\a' a y -> R.((a' - a) * y)) A_ws' A_ws Y_ws
       let F' = map2 (\f K_i -> R.(f + sum (map2 (*) K_i d_ws))) F K_ws
       let A' = scatter A I_ws A_ws'
       -- Update difference infos.
-      in (true, i + 1, j + k, d', F', A', cache')
+      let B_u = map2 (is_upper C.0) Y A'
+      let B_l = map2 (is_lower C.1) Y A'
+      let F_u = map2 (\b f -> if b then f else R.inf) B_u F
+      let F_l = map2 (\b f -> if b then f else R.(negate inf)) B_l F
+      let f_u = R.minimum F_u
+      let f_l = R.maximum F_l
+      let s0 = R.(f_u + f_l)
+      let d0 = R.(f_l - f_u)
+      let same = if R.(abs (d0 - d.d0) < d_eps) then d.same + 1 else 0
+      let swap = if R.(abs (d0 - d.d1) < d_eps) then d.swap + 1 else 0
+      let stop = R.(f_l - f_u < m_p.eps) || same >= 10 || swap >= 10
+      let d' = {d0, d1=d.d0, s0, same, swap}
+      let eps_ws = R.(max m_p.eps (d0*f32 0.1))
+      in (!stop, i + 1, j + k, d', eps_ws, F', A', p0', p1', i0', i1')
     let o = find_obj Y F A
-    let r = find_rho Y F A C d.d
+    let r = find_rho Y F A C d.s0
     -- Multiply y on alphas for prediction.
     let A = map2 (R.*) Y A
-    -- Returns alphas, objective value, bias, and iterations.
+    -- Returns alphas, objective value, bias, iterations,
+    -- and outer iterations.
     in (A, o, r, j, i)
 
   -- | Applies the solver suitable to the problem. If there are fewer
