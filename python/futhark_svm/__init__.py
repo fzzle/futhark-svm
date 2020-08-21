@@ -1,3 +1,4 @@
+from futhark_data import dump
 from futhark_ffi import Futhark
 import numpy as np
 import _fsvm
@@ -94,6 +95,27 @@ class SVC():
     print('outer iterations:\n ', _T_out)
 
 
+  def dump_fit(self, X, y, fn):
+    if self.gamma == 'auto':
+      self.__gamma = 1.0 / X.shape[1]
+    else:
+      self.__gamma = self.gamma
+
+    f = open(fn, 'wb')
+    dump(X.astype(np.float32), f, binary=True)
+    dump(y.astype(np.int32), f, binary=True)
+    dump(np.dtype('float32').type(self.C), f, binary=True)
+    dump(np.dtype('int32').type(self.n_ws), f, binary=True)
+    dump(np.dtype('int32').type(self.max_t), f, binary=True)
+    dump(np.dtype('int32').type(self.max_t_in), f, binary=True)
+    dump(np.dtype('int32').type(self.max_t_out), f, binary=True)
+    dump(np.dtype('float32').type(self.eps), f, binary=True)
+    dump(np.dtype('float32').type(self.__gamma), f, binary=True)
+    dump(np.dtype('float32').type(self.coef0), f, binary=True)
+    dump(np.dtype('float32').type(self.degree), f, binary=True)
+    f.close()
+
+
   def predict(self, X, n_ws=64):
     if not self.trained:
       raise Exception('Not trained')
@@ -113,3 +135,19 @@ class SVC():
     )
 
     return fsvm.from_futhark(output)
+
+
+  def dump_predict(self, X, n_ws=64, fn):
+    f = open(fn, 'wb')
+    dump(X.astype(np.float32), f, binary=True)
+    dump(fsvm.from_futhark(self.__A), f, binary=True)
+    dump(fsvm.from_futhark(self.__I), f, binary=True)
+    dump(fsvm.from_futhark(self.__S), f, binary=True)
+    dump(fsvm.from_futhark(self.__Z), f, binary=True)
+    dump(fsvm.from_futhark(self.__R), f, binary=True)
+    dump(np.dtype('int32').type(self.__n_c), f, binary=True)
+    dump(np.dtype('int32').type(n_ws), f, binary=True)
+    dump(np.dtype('float32').type(self.gamma), f, binary=True)
+    dump(np.dtype('float32').type(self.coef0), f, binary=True)
+    dump(np.dtype('float32').type(self.degree), f, binary=True)
+    f.close()
