@@ -17,7 +17,7 @@ module svc (R: float) (S: kernel with t = R.t) = {
   -- | Weighted C pair type.
   type C_t = smo.C_t
 
-  -- | Train a model on X/Y.
+  -- | Train a model on X/Y. Requires Y = 0..1..<n_classes.
   let fit [n][m] (X: [n][m]t) (Y: [n]i32) (C: t)
       (m_p: m_t) (k_p: s): output t [m][][][] =
     -- Number of distinct classes.
