@@ -2,7 +2,6 @@ lib/github.com/*
 !lib/github.com/fzzle/
 
 scripts/
-bench/
 data/
 bin/
 

@@ -1,0 +1,19 @@
+{
+  "models": [
+    {
+      "kernel": "polynomial",
+      "degree": 2.0,
+      "gamma": 0.1
+    },
+    {
+      "kernel": "polynomial",
+      "degree": 3.0,
+      "gamma": 0.1
+    },
+    {
+      "kernel": "polynomial",
+      "degree": 4.0,
+      "gamma": 0.1
+    }
+  ]
+}
