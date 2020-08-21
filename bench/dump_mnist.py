@@ -6,4 +6,4 @@ y_train = convert_from_file('./data/train-labels-idx1-ubyte')
 X_train = X_train.reshape(60000, 784)
 
 m = SVC(kernel='polynomial')
-m.dump_fit(X_train, y_train, 'poly_mnist.data')
+m.dump_fit(X_train, y_train, 'data/poly_mnist.data')
