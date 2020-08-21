@@ -40,7 +40,6 @@ class SVC():
     self.verbose = verbose
     self.trained = False
 
-
   def fit(self, X, y):
     if self.gamma == 'auto':
       self.__gamma = 1.0 / X.shape[1]
@@ -94,7 +93,6 @@ class SVC():
     print('inner iterations:\n ', _T)
     print('outer iterations:\n ', _T_out)
 
-
   def dump_fit(self, X, y, fn):
     if self.gamma == 'auto':
       self.__gamma = 1.0 / X.shape[1]
@@ -114,7 +112,6 @@ class SVC():
     dump(np.dtype('float32').type(self.coef0), f, binary=True)
     dump(np.dtype('float32').type(self.degree), f, binary=True)
     f.close()
-
 
   def predict(self, X, n_ws=64):
     if not self.trained:
@@ -136,8 +133,10 @@ class SVC():
 
     return fsvm.from_futhark(output)
 
+  def dump_predict(self, X, fn, n_ws=64):
+    if not self.trained:
+      raise Exception('Not trained')
 
-  def dump_predict(self, X, n_ws=64, fn):
     f = open(fn, 'wb')
     dump(X.astype(np.float32), f, binary=True)
     dump(fsvm.from_futhark(self.__A), f, binary=True)
