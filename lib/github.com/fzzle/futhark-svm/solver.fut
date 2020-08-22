@@ -247,8 +247,8 @@ module solver (R: float) (S: kernel with t = R.t) = {
     --   in cache'
     -- else
     -- Find ws values that are cached.
-    let I_c = -- #[incremental_flattening(only_intra)]
-      map (\i_ws -> #[sequential] find_unique i_ws i1) I_ws
+    let I_c = #[incremental_flattening(only_intra)]
+      map (\i_ws -> find_unique i_ws i1) I_ws
     -- Boolean vector w/ true if miss.
     let B_m = map (==(-1)) I_c
     -- I_h: Hit indices, I_m: Miss indices.
@@ -326,7 +326,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
       -- Solve the working set problem
       let (c1, k) = (true, 0)
       let (_, k, _, A_ws') = loop (c1, k, F_ws, A_ws) while c1 && k < m_p.max_t_in do
-        let (b, _, F_ws', A_ws') = solve_step K_wsx2 D_ws Y_ws F_ws A_ws C m_p
+        let (b, _, F_ws', A_ws') = solve_step K_wsx2 D_ws Y_ws F_ws A_ws C (m_p with eps = eps_ws)
         in (b, k + 1, F_ws', A_ws')
       -- Update F and write back A_ws to A.
       let d_ws = map3 (\a' a y -> R.((a' - a) * y)) A_ws' A_ws Y_ws
