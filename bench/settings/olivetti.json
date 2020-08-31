@@ -1,0 +1,15 @@
+{
+  "models": [
+    {
+      "kernel": "rbf",
+      "gamma": 0.01,
+      "C": 10
+    },
+    {
+      "degree": 2,
+      "kernel": "polynomial",
+      "gamma": 0.01,
+      "C": 10
+    }
+  ]
+}

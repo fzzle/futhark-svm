@@ -1,19 +1,24 @@
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
 from sklearn.metrics import accuracy_score
-from idx2numpy import convert_from_file
 from futhark_svm import SVC
+import pandas as pd
 import numpy as np
 import time
 import json
 
-X_train = convert_from_file('./data/train-images-idx3-ubyte')
-y_train = convert_from_file('./data/train-labels-idx1-ubyte')
-X_train = X_train.reshape(60000, 784) / 255.0 + 0.01
+df = pd.read_csv('./data/adult.csv')
+y = df['class'].map({'<=50K': 0, '>50K': 1}).to_numpy(np.int32)
+X = pd.get_dummies(df.drop(['class'], axis=1), dummy_na=True)
+X = X.apply(pd.to_numeric, axis=0).to_numpy()
+X = StandardScaler().fit_transform(X)
 
-X_test = convert_from_file('./data/t10k-images-idx3-ubyte')
-y_test = convert_from_file('./data/t10k-labels-idx1-ubyte')
-X_test = X_test.reshape(10000, 784) / 255.0 + 0.01
+X_train, X_test, y_train, y_test = train_test_split(
+  X, y, test_size=0.1, random_state=0)
 
-with open('settings/mnist.json') as f:
+print(X_train.shape)
+
+with open('settings/adult.json') as f:
   data = json.load(f)
 
 for s in data['models']:
@@ -37,7 +42,7 @@ for s in data['models']:
   print('training error:     ', 1-accuracy_score(y_train, t))
 
   start = time.time()
-  p = m.predict(X_test, n_ws=128)
+  p = m.predict(X_test, n_ws=2048)
   end = time.time()
   print('prediction time:    ', end - start)
   print('accuracy:           ', accuracy_score(y_test, p))

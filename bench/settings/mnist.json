@@ -1,0 +1,37 @@
+{
+  "models": [
+    {
+      "kernel": "polynomial",
+      "gamma": 0.01,
+      "degree": 2,
+      "C": 10
+    },
+    {
+      "kernel": "polynomial",
+      "gamma": 0.01,
+      "degree": 3,
+      "C": 10
+    },
+    {
+      "kernel": "polynomial",
+      "gamma": 0.01,
+      "degree": 4,
+      "C": 10
+    },
+    {
+      "kernel": "rbf",
+      "gamma": 0.001,
+      "C": 0.1
+    },
+    {
+      "kernel": "rbf",
+      "gamma": 0.001,
+      "C": 1
+    },
+    {
+      "kernel": "rbf",
+      "gamma": 0.01,
+      "C": 10
+    }
+  ]
+}

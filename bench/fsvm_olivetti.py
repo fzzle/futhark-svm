@@ -1,19 +1,21 @@
+from sklearn.model_selection import train_test_split
+from sklearn.datasets import fetch_olivetti_faces
 from sklearn.metrics import accuracy_score
-from idx2numpy import convert_from_file
 from futhark_svm import SVC
 import numpy as np
 import time
 import json
 
-X_train = convert_from_file('./data/train-images-idx3-ubyte')
-y_train = convert_from_file('./data/train-labels-idx1-ubyte')
-X_train = X_train.reshape(60000, 784) / 255.0 + 0.01
+dt = fetch_olivetti_faces()
+X = dt.data
+y = dt.target
 
-X_test = convert_from_file('./data/t10k-images-idx3-ubyte')
-y_test = convert_from_file('./data/t10k-labels-idx1-ubyte')
-X_test = X_test.reshape(10000, 784) / 255.0 + 0.01
+print(X.shape)
 
-with open('settings/mnist.json') as f:
+X_train, X_test, y_train, y_test = train_test_split(
+  X, y, test_size=0.1, random_state=0)
+
+with open('settings/olivetti.json') as f:
   data = json.load(f)
 
 for s in data['models']:
@@ -37,7 +39,7 @@ for s in data['models']:
   print('training error:     ', 1-accuracy_score(y_train, t))
 
   start = time.time()
-  p = m.predict(X_test, n_ws=128)
+  p = m.predict(X_test)
   end = time.time()
   print('prediction time:    ', end - start)
   print('accuracy:           ', accuracy_score(y_test, p))

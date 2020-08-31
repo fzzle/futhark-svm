@@ -1,6 +1,6 @@
 from sklearn.metrics import accuracy_score
 from idx2numpy import convert_from_file
-from futhark_svm import SVC
+from thundersvm import SVC
 import numpy as np
 import time
 import json
@@ -24,7 +24,7 @@ for s in data['models']:
     C      = s.get('C', 10.0),
     coef0  = s.get('coef0', 0.0),
     gamma  = s.get('gamma', 'auto'),
-    degree = float(s.get('degree', 3)),
+    degree = int(s.get('degree', 3)),
     verbose= True
   )
 
@@ -37,7 +37,7 @@ for s in data['models']:
   print('training error:     ', 1-accuracy_score(y_train, t))
 
   start = time.time()
-  p = m.predict(X_test, n_ws=128)
+  p = m.predict(X_test)
   end = time.time()
   print('prediction time:    ', end - start)
   print('accuracy:           ', accuracy_score(y_test, p))
