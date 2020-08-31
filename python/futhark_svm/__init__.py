@@ -73,18 +73,19 @@ class SVC():
     if self.verbose <= 0: return
 
     _S = fsvm.from_futhark(S)
+    _R = fsvm.from_futhark(R)
     _O = fsvm.from_futhark(O)
     _T = fsvm.from_futhark(T)
     _T_out = fsvm.from_futhark(T_out)
 
     print('total support vecs: ', len(_S))
-    print('avg. objective vals:', np.mean(_O))
+    print('avg. intercept/bias:', np.mean(_R))
+    print('avg. objective val: ', np.mean(_O))
     print('total inner iter:   ', np.sum(_T))
     print('total outer iter:   ', np.sum(_T_out))
 
     if self.verbose <= 1: return
 
-    _R = fsvm.from_futhark(R)
     _Z = fsvm.from_futhark(Z)
 
     print('intercepts:\n       ', _R)
