@@ -27,7 +27,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
   local let solve_step [n] (K: [n][n]t) (D: [n]t)
       (Y: [n]t) (F: [n]t) (A: [n]t) ((Cp, Cn): C_t)
       (m_p: m_t): (bool, (t, t), [n]t, [n]t) =
-    -- Find the extreme sample x_u in X_upper, which has the minimum
+    -- Find the extreme sample x_u in I_upper, which has the minimum
     -- optimality indicator, f_u.
     let B_u = map2 (is_upper Cp) Y A
     let F_u_I = map3 (\b f i ->
