@@ -10,7 +10,7 @@ let triu (n: i32): *[](i32, i32) =
   let k2triu (k: i32) =
     let i = n - 2 - i32.f32 (f32.sqrt (f32.i32 (-8*k+4*u-7))/2-0.5)
     in (i, k + i + 1 - p + (n - i) * (n - i - 1) / 2)
-  in map k2triu (i32.iota p)
+  in map k2triu (0..1..<p)
 
 -- | Like replicate but segmented.
 let segmented_replicate 't [n] (ns: [n]i32) (vs: [n]t): []t =
