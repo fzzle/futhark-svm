@@ -113,7 +113,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
   -- | Solves the quadratic programming problem by SMO. It computes
   -- the full kernel matrix and solves for all samples.
   let solve_full [n][m] (X: [n][m]t) (Y: [n]t) (C: C_t)
-      (m_p: m_t) (k_p: s): ([n]t, t, t, i32, i32) =
+      (m_p: m_t) (k_p: s): ([n]t, t, t, i64, i64) =
     -- Compute linear diagonal (for rbf).
     let D_r = L.diag () X
     -- Compute full kernel matrix.
@@ -160,16 +160,16 @@ module solver (R: float) (S: kernel with t = R.t) = {
     p0: [n_ws][n]t,
     p1: [n_ws][n]t,
     -- ic: [n_ws]i32,  -- Next/current I_ws
-    i0: [n_ws]i32,  -- Previous I_ws
-    i1: [n_ws]i32   -- PrevPrevious I_Ws
+    i0: [n_ws]i64,  -- Previous I_ws
+    i1: [n_ws]i64   -- PrevPrevious I_Ws
   }
 
-  let refer [n][m] (X: [n][m]t) (D_r: [n]t) (k_p: s) (n_ws: i32)
-      (c: cache [n_ws][n]) (I_ws: [n_ws]i32) (i: i32):
+  let refer [n][m] (X: [n][m]t) (D_r: [n]t) (k_p: s) (n_ws: i64)
+      (c: cache [n_ws][n]) (I_ws: [n_ws]i64) (i: i64):
       (cache [n_ws][n], [n][n_ws]t) =
 
     let c_p1: [n_ws][n]t = c.p1
-    let c_i1: [n_ws]i32  = c.i1
+    let c_i1: [n_ws]i64  = c.i1
     in if i < 2 then -- If not warm
       let X_ws = gather X I_ws
       let D_r_ws = gather D_r I_ws
@@ -204,19 +204,19 @@ module solver (R: float) (S: kernel with t = R.t) = {
 
   -- | Assumes that ws < n
   let working_set [n] (Y: [n]t) (F: [n]t)
-      (A: [n]t) ((Cp, Cn): C_t) (n_ws: i32): *[n_ws]i32 =
+      (A: [n]t) ((Cp, Cn): C_t) (n_ws: i64): *[n_ws]i64 =
     -- Get indices of sorted optimality indicators F.
     let I = map (.1) (radix_sort_float R.num_bits
       (\i (f, _) -> R.get_bit i f) (zip F (iota n)))
     let B_ul = map2 (\y a -> (is_upper Cp y a, is_lower Cn y a)) Y A
     let (B_u, B_l) = unzip (map (\i -> B_ul[i]) I)
-    let T_u = scan (+) 0 (map i32.bool B_u)
+    let T_u = scan (+) 0 (map i64.bool B_u)
     -- n_u: Spaces allotted to upper.
-    let n_u = i32.min (last T_u) (n_ws / 2)
+    let n_u = i64.min (last T_u) (n_ws / 2)
     -- n_avail -= n_u
     let S_u = map2 (\b_u t_u -> b_u && t_u <= n_u) B_u T_u
     let B_l' = map2 (\b_l' s_u -> b_l' && !s_u) B_l S_u
-    let T_l' = scan (+) 0 (map i32.bool B_l')
+    let T_l' = scan (+) 0 (map i64.bool B_l')
     -- ws - n_u: Spaces left. n_l: n lower to discard.
     let n_l = last T_l' - (n_ws - n_u)
     let S_l = map2 (\b_l' t_l' -> b_l' && t_l' > n_l) B_l' T_l'
@@ -227,14 +227,14 @@ module solver (R: float) (S: kernel with t = R.t) = {
     let S = if n_open > 0 then
       -- Fill remaining slots with upper samples.
       let B_u' = map2 (\b_u s -> b_u && !s) S_u S
-      let T_u' = scan (+) 0 (map i32.bool B_u')
+      let T_u' = scan (+) 0 (map i64.bool B_u')
       let S_u' = map2 (\b_u' t_u' -> b_u' && t_u' >= n_open) B_u' T_u'
       in map2 (||) S S_u'
       else S
     -- Put back at original indices.
     -- in (unzip (filter (.0) (zip S I))).1 :> *[ws]i32
     let S' = scatter (replicate n false) I S
-    let I_ws = filter (\i -> S'[i]) (iota n) :> *[n_ws]i32
+    let I_ws = filter (\i -> S'[i]) (iota n) :> *[n_ws]i64
 
     in I_ws
 
@@ -243,7 +243,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
 
   -- | Solve the QP problem by SMO and two-level decomposition.
   let solve_ws [n][m] (X: [n][m]t) (Y: [n]t) (C: C_t)
-      (m_p: m_t) (k_p: s): ([n]t, t, t, i32, i32) =
+      (m_p: m_t) (k_p: s): ([n]t, t, t, i64, i64) =
     let n_ws = m_p.n_ws
     -- Compute the kernel diagonal.
     let D = S.diag k_p X
@@ -254,8 +254,8 @@ module solver (R: float) (S: kernel with t = R.t) = {
     -- i: Outer iterations, j: Inner.
     -- Cache
     let pK = replicate n_ws (replicate n (R.i32 0))
-    let prev_I_ws = replicate n_ws (-1i32)
-    let d = {p0=R.i32 2, p1=R.inf, swap=0i32, same=0i32, d=(R.i32 0, R.i32 0)}
+    let prev_I_ws = replicate n_ws (-1i64)
+    let d = {p0=R.i32 2, p1=R.inf, swap=0i64, same=0i64, d=(R.i32 0, R.i32 0)}
     let cache = {p0=pK, p1=pK, i0=prev_I_ws, i1=prev_I_ws}
 
     let (c, i, j) = (true, 0, 1)
@@ -311,7 +311,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
   -- when using the two-level decomposition solver (solve_ws), and the
   -- full-kernel solver (solve_full) is used instead.
   let solve [n][m] (X: [n][m]t) (Y: [n]t) (C: C_t)
-      (m_p: m_t) (k_p: s): ([n]t, t, t, i32, i32) =
+      (m_p: m_t) (k_p: s): ([n]t, t, t, i64, i64) =
     if n <= m_p.n_ws
     then solve_full X Y C m_p k_p
     else solve_ws   X Y C m_p k_p

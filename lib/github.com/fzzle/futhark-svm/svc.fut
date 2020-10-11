@@ -18,14 +18,14 @@ module svc (R: float) (S: kernel with t = R.t) = {
   type C_t = smo.C_t
 
   -- | Train a model on X/Y. Requires Y = 0..1..<n_classes.
-  let fit [n][m] (X: [n][m]t) (Y: [n]i32) (C: t)
+  let fit [n][m] (X: [n][m]t) (Y: [n]i64) (C: t)
       (m_p: m_t) (k_p: s): output t [m][][][] =
     -- Number of distinct classes.
-    let n_c = 1 + i32.maximum Y
+    let n_c = 1 + i64.maximum Y
     let counts = bincount n_c Y
     let starts = exclusive_scan (+) 0 counts
     -- Sort samples by class (no negative integers).
-    let sort_by_fst = radix_sort_by_key (.0) i32.num_bits i32.get_bit
+    let sort_by_fst = radix_sort_by_key (.0) i64.num_bits i64.get_bit
     let X = map (.1) (sort_by_fst (zip Y X))
     -- Number of models to train.
     let n_m = n_c * (n_c - 1) / 2
@@ -60,7 +60,7 @@ module svc (R: float) (S: kernel with t = R.t) = {
     let B_s = scatter (replicate n false) I trues
     let S_ = gather X (filter (\i -> B_s[i]) (iota n))
     -- Remap indices for support vectors to those of S.
-    let remap = scan (+) 0 (map i32.bool B_s)
+    let remap = scan (+) 0 (map i64.bool B_s)
     let I = map (\i -> remap[i] - 1) I
     let weights = {A, I, S=S_, Z, R=R_, n_c}
     let details = {O, T, T_out}
@@ -74,17 +74,17 @@ module svc (R: float) (S: kernel with t = R.t) = {
   -- | Predict classes of samples X.
   let predict [n][m][o][q] (X: [n][m]t) ({A: [o]t, I,
       S=S_, R=R_: [q]t, Z, n_c}: weights t [m][][][])
-      ({n_ws}: p_t) (k_p: s): [n]i32 =
+      ({n_ws}: p_t) (k_p: s): [n]i64 =
     let D_l_S = L.diag {} S_
-    let trius = triu n_c :> [q](i32, i32)
+    let trius = triu n_c :> [q](i64, i64)
     let F = segmented_replicate_to o Z (indices Z)
     let (Y, i) = ([], 0)
     let (Y, _) = loop (Y, i) while i < n do
-      let to = i32.min n (i + n_ws)
+      let to = i64.min n (i + n_ws)
       let D_l_X = L.diag {} X[i:to]
       let K = S.matrix k_p X[i:to] S_ D_l_X D_l_S
       let Y_i = map (\K_i ->
-        let dK_i = map (\j -> K_i[j]) (I :> [o]i32)
+        let dK_i = map (\j -> K_i[j]) (I :> [o]i64)
         let prods = map2 (R.*) dK_i A
         -- Find decision values (without bias).
         let ds = reduce_by_index (replicate q (R.i32 0)) (R.+) (R.i32 0) F prods
@@ -95,5 +95,5 @@ module svc (R: float) (S: kernel with t = R.t) = {
         let v_c = reduce max_by_fst (0, -1) (zip votes (iota n_c))
         in v_c.1) K
       in (Y ++ Y_i, i + n_ws)
-    in Y :> [n]i32
+    in Y :> [n]i64
 }

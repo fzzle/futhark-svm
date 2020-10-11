@@ -8,9 +8,9 @@ module L = fsvm.svc K.linear
 -- ==
 -- entry: fit_predict_linear
 -- input { [[0f32, 1f32], [1f32, 0f32]]
---          [0i32, 1i32]
+--          [0i64, 1i64]
 --         [[0f32, 1f32], [1f32, 0f32]] }
--- output { [0i32, 1i32] }
+-- output { [0i64, 1i64] }
 entry fit_predict_linear [m] (X: [][m]f32) y (X_test: [][m]f32) =
   let {weights, details=_} = L.fit X y 1 fsvm.default_fit {}
   in L.predict X_test weights fsvm.default_predict {}

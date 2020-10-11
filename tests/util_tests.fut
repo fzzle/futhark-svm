@@ -2,29 +2,31 @@ import "../lib/github.com/fzzle/futhark-svm/util"
 
 -- ==
 -- entry: test_triu
--- input { 3 } output { [0, 0, 1] [1, 2, 2] }
--- input { 5 } output {
---   [0, 0, 0, 0, 1, 1, 1, 2, 2, 3]
---   [1, 2, 3, 4, 2, 3, 4, 3, 4, 4] }
--- input { 10 } output {
---   [0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
---    1, 1, 1, 1, 1, 1, 1, 2, 2, 2,
---    2, 2, 2, 2, 3, 3, 3, 3, 3, 3,
---    4, 4, 4, 4, 4, 5, 5, 5, 5, 6,
---    6, 6, 7, 7, 8]
---   [1, 2, 3, 4, 5, 6, 7, 8, 9, 2,
---    3, 4, 5, 6, 7, 8, 9, 3, 4, 5,
---    6, 7, 8, 9, 4, 5, 6, 7, 8, 9,
---    5, 6, 7, 8, 9, 6, 7, 8, 9, 7,
---    8, 9, 8, 9, 9] }
-entry test_triu (n: i32) =
+-- input { 3i64 } output {
+--   [0i64, 0i64, 1i64] [1i64, 2i64, 2i64] }
+-- input { 5i64 } output {
+--   [0i64, 0i64, 0i64, 0i64, 1i64, 1i64, 1i64, 2i64, 2i64, 3i64]
+--   [1i64, 2i64, 3i64, 4i64, 2i64, 3i64, 4i64, 3i64, 4i64, 4i64] }
+-- input { 10i64 } output {
+--   [0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 0i64, 1i64,
+--    1i64, 1i64, 1i64, 1i64, 1i64, 1i64, 1i64, 2i64, 2i64, 2i64,
+--    2i64, 2i64, 2i64, 2i64, 3i64, 3i64, 3i64, 3i64, 3i64, 3i64,
+--    4i64, 4i64, 4i64, 4i64, 4i64, 5i64, 5i64, 5i64, 5i64, 6i64,
+--    6i64, 6i64, 7i64, 7i64, 8i64]
+--   [1i64, 2i64, 3i64, 4i64, 5i64, 6i64, 7i64, 8i64, 9i64, 2i64,
+--    3i64, 4i64, 5i64, 6i64, 7i64, 8i64, 9i64, 3i64, 4i64, 5i64,
+--    6i64, 7i64, 8i64, 9i64, 4i64, 5i64, 6i64, 7i64, 8i64, 9i64,
+--    5i64, 6i64, 7i64, 8i64, 9i64, 6i64, 7i64, 8i64, 9i64, 7i64,
+--    8i64, 9i64, 8i64, 9i64, 9i64] }
+entry test_triu (n: i64) =
   unzip (triu n)
 
 -- ==
 -- entry: test_segmented_replicate
--- input { [3] [0] } output { [0, 0, 0] }
--- input { [1, 2, 4] [0, 1, 2] } output { [0, 1, 1, 2, 2, 2, 2] }
-entry test_segmented_replicate [n] (ns: [n]i32) (vs: [n]i32) =
+-- input { [3i64] [0i64] } output { [0i64, 0i64, 0i64] }
+-- input { [1i64, 2i64, 4i64] [0i64, 1i64, 2i64] } output {
+--   [0i64, 1i64, 1i64, 2i64, 2i64, 2i64, 2i64] }
+entry test_segmented_replicate [n] (ns: [n]i64) (vs: [n]i64) =
   segmented_replicate ns vs
 
 -- ==
@@ -37,15 +39,17 @@ entry test_exclusive_scan [n] (vs: [n]i32) =
 
 -- ==
 -- entry: test_bincount
--- input { 5 [0] } output { [1, 0, 0, 0, 0] }
--- input { 3 [0, 0, 1, 1, 2, 2] } output { [2, 2, 2] }
--- input { 5 [0, 3, 4, 1, 3] } output { [1, 1, 0, 2, 1] }
-entry test_bincount [n] (k: i32) (vs: [n]i32) =
+-- input { 5i64 [0i64] } output { [1i64, 0i64, 0i64, 0i64, 0i64] }
+-- input { 3i64 [0i64, 0i64, 1i64, 1i64, 2i64, 2i64] } output {
+--   [2i64, 2i64, 2i64] }
+-- input { 5i64 [0i64, 3i64, 4i64, 1i64, 3i64] } output {
+--   [1i64, 1i64, 0i64, 2i64, 1i64] }
+entry test_bincount [n] (k: i64) (vs: [n]i64) =
   bincount k vs
 
 -- ==
 -- entry: test_find_unique
--- input { 5 [1, 2, 3] } output { -1 }
--- input { 2 [1, 2, 3] } output { 1 }
-entry test_find_unique [n] (v: i32) (vs: [n]i32) =
+-- input { 5i64 [1i64, 2i64, 3i64] } output { -1i64 }
+-- input { 2i64 [1i64, 2i64, 3i64] } output { 1i64 }
+entry test_find_unique [n] (v: i64) (vs: [n]i64) =
   find_unique v vs

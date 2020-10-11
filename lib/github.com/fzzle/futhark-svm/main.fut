@@ -18,8 +18,8 @@ let make_k_p2 (p: k_t) = {gamma=p.0, coef0=p.1, degree=p.2}
 let make_k_p3 (p: k_t) = {gamma=p.0}
 
 let svc_fit [n][m] 't fit (make_k_p: k_t -> t)
-    (X: [n][m]f32) (Y: [n]i32) (C: f32) (n_ws: i32)
-    (max_t: i32) (max_t_in: i32) (max_t_out: i32)
+    (X: [n][m]f32) (Y: [n]i64) (C: f32) (n_ws: i64)
+    (max_t: i64) (max_t_in: i64) (max_t_out: i64)
     (eps: f32) (gamma: f32) (coef0: f32) (degree: f32) =
   let m_p = {n_ws, max_t, max_t_in, max_t_out, eps}
   let k_p = make_k_p (gamma, coef0, degree)
@@ -28,9 +28,9 @@ let svc_fit [n][m] 't fit (make_k_p: k_t -> t)
   in (A, I, S, Z, R, n_c, O, T, T_out)
 
 let svc_predict [n][m][o][p][q] 't predict (make_k_p: k_t -> t)
-    (X: [n][m]f32) (A: [o]f32) (I: [o]i32) (S: [p][m]f32)
-    (Z: [q]i32) (R: [q]f32) (n_c: i32) (n_ws: i32)
-    (gamma: f32) (coef0: f32) (degree: f32): [n]i32 =
+    (X: [n][m]f32) (A: [o]f32) (I: [o]i64) (S: [p][m]f32)
+    (Z: [q]i64) (R: [q]f32) (n_c: i64) (n_ws: i64)
+    (gamma: f32) (coef0: f32) (degree: f32): [n]i64 =
   let m_w = {A, I, S, Z, R, n_c}
   let p_p = {n_ws}
   let k_p = make_k_p (gamma, coef0, degree)
