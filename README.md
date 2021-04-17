@@ -1,4 +1,4 @@
-A support vector machine library in Futhark.
+A support vector machine library written in Futhark.
 
 ## Installation: Futhark
 
