@@ -132,7 +132,7 @@ module rbf (R: real): kernel
   }
 
   let value [n] ({gamma}: s) (u: [n]t) (v: [n]t): t =
-    R.exp (R.negate gamma R.* util.sqdist u v)
+    R.exp (R.neg gamma R.* util.sqdist u v)
 
   -- rbf diagonals are always all 1 because the squared distance
   -- of a point to itself is 0 and \exp(\gamma * 0) is 1.
@@ -161,7 +161,7 @@ module rbf_pre (R: real): kernel
   }
 
   let value [n] ({gamma}: s) (u: [n]t) (v: [n]t): t =
-    R.exp (R.negate gamma R.* util.sqdist u v)
+    R.exp (R.neg gamma R.* util.sqdist u v)
 
   let extdiag [n] (_: s) (_: [n][n]t): *[n]t =
     replicate n (R.i32 1)
@@ -171,7 +171,7 @@ module rbf_pre (R: real): kernel
 
   let row [n][m] ({gamma}: s) (X: [n][m]t)
       (u: [m]t) (D: [n]t) (d_u: t): *[n]t =
-    let k x = R.exp (R.negate gamma R.* x)
+    let k x = R.exp (R.neg gamma R.* x)
     in map2 (\v d_v -> k R.(d_u + d_v - i32 2 * util.dot u v)) X D
 
   let matrix [n][m][o] (p: s) (X0: [n][m]t)

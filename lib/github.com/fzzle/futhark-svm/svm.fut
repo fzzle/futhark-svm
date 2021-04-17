@@ -1,5 +1,6 @@
 import "svc"
 import "kernel"
+import "types"
 
 -- | Aggregation module for futhark-svm.
 module svm (R: float) = {

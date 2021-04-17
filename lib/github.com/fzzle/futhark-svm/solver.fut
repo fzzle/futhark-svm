@@ -36,7 +36,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
     let (f_u, u) = reduce min_by_fst (R.inf, -1) F_u_I
     -- Find f_max so we can check if we're done.
     let B_l = map2 (is_lower Cn) Y A
-    let F_l = map2 (\b f -> if b then f else R.(negate inf)) B_l F
+    let F_l = map2 (\b f -> if b then f else R.(neg inf)) B_l F
     let f_max = R.maximum F_l
     -- Check if done.
     in if R.(f_max-f_u<m_p.eps) then (false, (f_u, f_max), F, A) else
@@ -49,9 +49,9 @@ module solver (R: float) (S: kernel with t = R.t) = {
       -- Checks if u isn't -1 and f in F_lower and b < 0.
       in if R.(b < i32 0)
         then (R.(b * b / (max tau (D[u] + d - i32 2 * k_u))), i)
-        else (R.(negate inf), -1)) F_l D K_u (iota n)
+        else (R.(neg inf), -1)) F_l D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
-    let (_, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
+    let (_, l) = reduce max_by_fst (R.(neg inf), -1) V_l_I
     -- Find bounds for a_u, a_l.
     let c_u = R.(if Y[u] > i32 0 then Cp - A[u] else A[u])
     let c_l = R.(if Y[l] < i32 0 then Cn - A[l] else A[l])
@@ -95,9 +95,9 @@ module solver (R: float) (S: kernel with t = R.t) = {
     let V_l_I = map4 (\y d k_u i ->
       if R.(y < i32 0) -- b<0 iff. !p since b=f_u-f_l, f_u=-1, f_l=1
       then (R.(i32 2 / (D[0] + d - i32 2 * k_u)), i)
-      else (R.(negate inf), -1)) Y D K_u (iota n)
+      else (R.(neg inf), -1)) Y D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
-    let (beta, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
+    let (beta, l) = reduce max_by_fst (R.(neg inf), -1) V_l_I
     -- We bound d_l by both Cn and Cp as it's unlikely for 2 / eta to
     -- be greater at the initial step. Otherwise, if a_u was greater
     -- than Cp we wouldn't be able to eliminate d_u * k_u.
@@ -147,9 +147,9 @@ module solver (R: float) (S: kernel with t = R.t) = {
     let V_l_I = map4 (\y d k_u i ->
       if R.(y < i32 0) -- b<0 iff. !p since b=f_u-f_l, f_u=-1, f_l=1
       then (R.(i32 2 / (D[0] + d - i32 2 * k_u)), i)
-      else (R.(negate inf), -1)) Y D K_u (iota n)
+      else (R.(neg inf), -1)) Y D K_u (iota n)
     let max_by_fst a b = if R.(a.0 > b.0) then a else b
-    let (beta, l) = reduce max_by_fst (R.(negate inf), -1) V_l_I
+    let (beta, l) = reduce max_by_fst (R.(neg inf), -1) V_l_I
     let K_l = S.row k_p X X[l] D_r D_r[l]
     let a = R.min beta (R.min Cp Cn) -- a_l
     let F = map3 (\y k_u k_l -> R.(a * (k_u - k_l) - y)) Y K_u K_l
