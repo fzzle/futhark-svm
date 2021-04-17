@@ -125,7 +125,7 @@ module solver (R: float) (S: kernel with t = R.t) = {
     -- d = (f_u, f_l) for the initial f_u=-1 and f_l=1
     let (c, i, d) = (true, 1, R.((i32 (-1), i32 1)))
     let (_, i, d, F, A) =
-      loop (c, i, d, F, A) while c && i != m_p.max_t do
+      loop (c, i, _, F, A) = (c, i, d, F, A) while c && i != m_p.max_t do
         let (b, d', F', A') = solve_step K D Y F A C m_p
         in (b, i + 1, d', F', A')
     let o = find_obj Y F A
